@@ -3,16 +3,50 @@ import config
 import lflparser
 import smtplib
 import re
+import sqlite3
 from datetime import datetime
 from unidecode import unidecode
 from telebot import types
+from yookassa import Configuration
 
 bot = telebot.TeleBot(config.TOKEN)
+
+Configuration.account_id = config.SHOP_ID
+Configuration.secret_key = config.YK_API_KEY
 
 user_states = {}
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
+    connection = sqlite3.connect('users.db')
+    cursor = connection.cursor()
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS Users (
+    username TEXT NOT NULL,
+    subscription_active INTEGER,
+    subscription_start_datetime TIMESTAMP,
+    subscription_duration TEXT NOT NULL
+    )
+    ''')
+
+    if message.from_user.username:
+        # Проверяем, существует ли пользователь с таким username
+        cursor.execute('SELECT * FROM Users WHERE username = ?', (message.from_user.username,))
+        existing_user = cursor.fetchone()
+
+        if existing_user is None:
+            # Добавляем нового пользователя с начальными значениями
+            cursor.execute('''
+            INSERT INTO Users (username, subscription_active, subscription_start_datetime, subscription_duration)
+            VALUES (?, ?, ?, ?)
+            ''', (message.from_user.username, 0, None, ''))
+
+    connection.commit()
+    connection.close()
+
+
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("📅 Расписание игр")
     item2 = types.KeyboardButton("💳 Подписка")
@@ -28,6 +62,48 @@ def welcome(message):
         parse_mode='html',
         reply_markup=markup
     )
+
+@bot.message_handler(commands=['admin_feature_view_users_database'])
+def view_users(message):
+    try:
+        connection = sqlite3.connect('users.db')
+        cursor = connection.cursor()
+
+        # Получаем все записи из таблицы
+        cursor.execute("SELECT * FROM Users")
+        users = cursor.fetchall()
+
+        if not users:
+            bot.reply_to(message, "База данных пуста")
+            return
+
+        # Формируем ответ в читаемом виде
+        response = "<b>Содержимое базы данных:</b>\n\n"
+        for user in users:
+            username = user[0]
+            active = "Активна" if user[1] else "Не активна"
+            start_date = user[2] if user[2] else "Не задана"
+            duration = user[3] or "Не указана"
+
+            response += f"""
+<b>Пользователь:</b> {username}
+<b>Статус подписки:</b> {active}
+<b>Дата начала:</b> {start_date}
+<b>Длительность:</b> {duration}
+{'-'*30}
+"""
+
+        # Ограничиваем длину сообщения (Telegram имеет лимит)
+        if len(response) > 4096:
+            response = response[:4091] + "..."
+
+        bot.send_message(message.chat.id, response, parse_mode='html')
+
+    except Exception as e:
+        bot.reply_to(message, f"Ошибка при чтении базы данных: {str(e)}")
+    finally:
+        if 'connection' in locals():
+            connection.close()
 
 @bot.message_handler(commands=['help'])
 def help_handler(message):
