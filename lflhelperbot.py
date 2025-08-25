@@ -42,6 +42,11 @@ def is_subscription_active(username):
         return False  # Подписка уже неактивна
 
     if not duration_str:
+        connection = sqlite3.connect('users.db')
+        cursor = connection.cursor()
+        cursor.execute("UPDATE Users SET subscription_active = 0 WHERE username = ?", (username,))
+        connection.commit()
+        connection.close()
         return False  # Дата окончания не указана
 
     try:
