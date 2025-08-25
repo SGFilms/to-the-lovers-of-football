@@ -64,12 +64,11 @@ def get_schedule(team):
                 }]
                 schedules.append(first_two_matches)
                 teams_found.append(json_data['props']['pageProps']['club']['name'])
-        except (RuntimeError, TypeError, NameError):
+        except (RuntimeError, TypeError, NameError, KeyError, ValueError, IndexError, AttributeError):
             error_occurred = True
 
         if error_occurred:
-            teams_found.append(json_data['props']['pageProps']['club']['name'])
-            schedules.append('На сайте расписания нет.')
+            continue
 
 
     return teams_found, schedules
