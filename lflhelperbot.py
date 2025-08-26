@@ -5,6 +5,8 @@ import smtplib
 import re
 import sqlite3
 import uuid
+import time
+import random
 from datetime import datetime
 from unidecode import unidecode
 from telebot import types
@@ -16,7 +18,100 @@ Configuration.account_id = config.SHOP_ID
 Configuration.secret_key = config.YK_API_KEY
 
 user_states = {}
-users_waiting_for_payment = {}
+
+def get_user_column(username, column_name):
+    """
+    Возвращает значение указанного столбца для пользователя из таблицы Users.
+
+    :param username: Имя пользователя (Telegram username)
+    :param column_name: Название столбца в таблице Users
+    :return: Значение столбца или None, если пользователь не найден или произошла ошибка
+    """
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+
+    try:
+        # Выполняем запрос к базе данных
+        cursor.execute(f"SELECT {column_name} FROM Users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+
+        # Если пользователь существует и столбец содержит значение
+        if result and result[0] is not None:
+            return result[0]
+        else:
+            return None  # Пользователь не найден или значение равно NULL
+
+    except sqlite3.Error as e:
+        print(f"Ошибка при получении значения столбца '{column_name}': {e}")
+        return None
+
+    finally:
+        conn.close()
+
+def ensure_last_payment_id_column():
+    """
+    Проверяет наличие столбца 'last_payment_id' в таблице 'Users'.
+    Если столбца нет, добавляет его с типом TEXT и значением по умолчанию NULL.
+    """
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+
+    try:
+        # Шаг 1: Проверка наличия столбца
+        cursor.execute("PRAGMA table_info(Users)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'last_payment_id' not in columns:
+            print("Столбец 'last_payment_id' не найден. Добавление...")
+
+            # Шаг 2: Добавление столбца
+            cursor.execute("ALTER TABLE Users ADD COLUMN last_payment_id TEXT DEFAULT NULL")
+            conn.commit()
+            print("Столбец 'last_payment_id' успешно добавлен.")
+        else:
+            print("Столбец 'last_payment_id' уже существует.")
+
+    except sqlite3.Error as e:
+        print(f"Ошибка при работе с базой данных: {e}")
+    finally:
+        conn.close()
+
+def wait_for_payment_success(username, max_retries=100, initial_delay=1, max_delay=60):
+    """
+    Polls for payment success with exponential backoff.
+
+    Args:
+        username (str): The username to query.
+        max_retries (int): Maximum number of retry attempts.
+        initial_delay (int): Initial delay in seconds.
+        max_delay (int): Maximum delay allowed in seconds.
+
+    Returns:
+        bool: True if payment succeeded, False if max retries reached.
+    """
+    retry_count = 0
+    delay = initial_delay
+
+    while retry_count < max_retries:
+        try:
+            payment = Payment.find_one(get_user_column(username, 'last_payment_id'))
+            if payment.status == 'succeeded':
+                return True
+        except Exception as e:
+            print(f"Error checking payment status for {username}: {e}")
+
+        # Add jitter to avoid synchronized retries
+        jitter = random.uniform(0, delay / 2)
+        sleep_time = delay + jitter
+        print(f"Retrying in {sleep_time:.2f} seconds...")
+        time.sleep(sleep_time)
+
+        # Exponentially increase delay, capped at max_delay
+        delay = min(delay * 2, max_delay)
+        retry_count += 1
+
+    print(f"Max retries reached for {username}. Payment status not confirmed.")
+    return False
 
 def is_subscription_active(username):
     """
@@ -70,21 +165,6 @@ def is_subscription_active(username):
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    connection = sqlite3.connect('users.db')
-    cursor = connection.cursor()
-
-    # Обновление поля subscription_duration
-    cursor.execute('''
-            UPDATE Users 
-            SET subscription_duration = ?
-            WHERE username = ?
-        ''', ('', 'stanislausvonscheinfein'))
-
-    # Проверка, сколько строк было обновлено
-    rows_affected = cursor.rowcount
-    connection.commit()
-    connection.close()
-
     connection = sqlite3.connect('users.db')
     cursor = connection.cursor()
 
@@ -162,12 +242,14 @@ def view_users(message):
             active = user[1]
             start_date = user[2]
             duration = user[3]
+            last_payment_id = user[4]
 
             response += f"""
         <b>Пользователь:</b> {username}
         <b>Статус подписки:</b> {active}
         <b>Дата начала:</b> {start_date}
         <b>Длительность:</b> {duration}
+        <b>Последний ID платежа:</b> {last_payment_id}
         {'-'*30}
             """
 
@@ -228,7 +310,7 @@ def commands_handler(message):
                     start_date = user_data[2] if user_data[2] else "Не задана"
                     duration = user_data[3] if user_data[3] else "Не указана"
 
-                    response = f"<b>Информация о подписке:</b>\n<b>Пользователь:</b> {user_data[0]}\n<b>Статус:</b> {status}\n<b>Дата начала:</b> {start_date}\n<b>Дата окончания:</b> {duration}"
+                    response = f"<b>Информация о подписке:</b>\n<b>Пользователь:</b> {user_data[0]}\n<b>Статус:</b> {status}\n<b>Дата начала:</b> {datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M:%S")}\n<b>Дата окончания:</b> {datetime.strptime(duration, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M:%S")}"
 
                     bot.send_message(message.chat.id, response, parse_mode='html')
 
@@ -258,7 +340,7 @@ def commands_handler(message):
 
             elif user_states.get(message.chat.id) == 'waiting_for_feedback':
                 feedback = message.text
-                username = message.from_user.username
+                username = message.chat.username
 
                 def transliterate(feedback, username):
                     username_result = username
@@ -296,46 +378,58 @@ def commands_handler(message):
                 buy_subscription = types.InlineKeyboardButton('Купить подписку', callback_data='buy_subscription')
                 subscription_markup.add(buy_subscription)
                 bot.send_message(message.chat.id, '<b>Успейте протестировать всего за 1 рубль!</b>\n\n<b>Что будет дальше?</b>\n15 сентября 2025 года стартует подписка за 899 руб. в год и 100 руб. в месяц.\n\nНажмите «Купить подписку», чтобы начать тестировать за 1 рубль! ⚽', parse_mode='html', reply_markup=subscription_markup)
-            else:
-                subscription_markup = types.InlineKeyboardMarkup(row_width=1)
-                buy_subscription = types.InlineKeyboardButton('Купить подписку', callback_data='buy_subscription')
-                subscription_markup.add(buy_subscription)
-                bot.send_message(
-                    message.chat.id,
-                    f"Похоже, что у вас еще нет подписки. Нажмите «Купить подписку», чтобы начать тестировать! ⚽\n",
-                    parse_mode='html',
-                    reply_markup=subscription_markup
-                )
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call):
-    try:
-        if call.message:
-            if call.data == 'buy_subscription':
-                username = call.message.chat.username
-                bot.send_message(call.message.chat.id, 'Формируем заказ...')
+            elif user_states.get(message.chat.id) == 'waiting_for_email':
+                email = message.text
+                username = message.from_user.username
+                bot.send_message(message.chat.id, 'Формируем заказ...')
                 payment = Payment.create({
                     "amount": {
                         "value": "1.00",
                         "currency": "RUB"
                     },
+                    "capture": True,
                     "confirmation": {
                         "type": "redirect",
-                        "return_url": "https://t.me/footballhelperbot",
+                        "return_url": "https://t.me/football_amateur_bot"
                     },
-                    "capture": True,
-                    "description": "Доступ за 1 рубль до 15 сентября 2025",
+                    "description": "Подписка на бота",
+                    "receipt": {
+                        "customer": {
+                            "email": f"{email}",
+                        },
+                        "items": [
+                            {
+                                "description": "Доступ к боту за 1 рубль до 15 сентября 2025 года",
+                                "quantity": 1,
+                                "amount": {
+                                    "value": "1.00",
+                                    "currency": "RUB"
+                                },
+                                "vat_code": 1
+                            }
+                        ]
+                    }
                 }, uuid.uuid4())
-                users_waiting_for_payment[call.message.chat.username] = payment.id
-                bot.send_message(call.message.chat.id, f'Оплата: {payment.confirmation.confirmation_url}', parse_mode='html')
-                bot.send_message(call.message.chat.id, 'Ожидание оплаты обычно занимает до 2 минут. Вам придет уведомление о том, что оплата прошла успешно.')
-                print(users_waiting_for_payment[call.message.chat.username])
-                while Payment.find_one(users_waiting_for_payment[call.message.chat.username]).status != 'succeeded':
-                    print(Payment.find_one(users_waiting_for_payment[call.message.chat.username]).status)
 
-                if Payment.find_one(users_waiting_for_payment[call.message.chat.username]).status == 'succeeded':
-                    users_waiting_for_payment.pop(call.message.chat.username)
-                    print(users_waiting_for_payment)
+                ensure_last_payment_id_column()
+
+                conn = sqlite3.connect('users.db')
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    UPDATE Users 
+                    SET last_payment_id = ? 
+                    WHERE username = ?
+                """, (payment.id, username))
+
+                conn.commit()
+                conn.close() # Сохраняем ID платежа для дальнейшего использования В БАЗУ ДАННЫХ
+
+                bot.send_message(message.chat.id, f'Оплата: {payment.confirmation.confirmation_url}', parse_mode='html')
+                bot.send_message(message.chat.id, 'Ожидание оплаты обычно занимает до 2 минут. Вам придет уведомление о том, что оплата прошла успешно. Если ничего не произойдет, введите команду /start.')
+
+                if wait_for_payment_success(message.from_user.username):
                     try:
                         # Подключение к базе данных
                         connection = sqlite3.connect('users.db')
@@ -359,21 +453,40 @@ def callback_inline(call):
 
                         # Уведомление пользователя об успешной активации подписки
                         bot.send_message(
-                            call.message.chat.id,
+                            message.chat.id,
                             f"✅ Подписка активирована!\n"
-                            f"📅 Дата начала: {now}\n"
+                            f"📅 Дата начала: {datetime.strptime(now, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M:%S")}\n"
                             f"⏳ Длительность: до 15 сентября 2025 года 00:00\n"
                             f"Теперь вы можете использовать все функции бота!",
                             parse_mode='html'
                         )
                     except Exception as e:
                         bot.send_message(
-                            call.message.chat.id,
+                            message.chat.id,
                             f"❌ Ошибка при активации подписки: {str(e)}"
                         )
 
-                elif payment.status == "canceled":
-                    bot.send_message(call.message.chat.id, 'Оплата не удалась. Попробуйте сначала.')
+                elif Payment.find_one(get_user_column(message.chat.username, 'last_payment_id')).status == "canceled":
+                    bot.send_message(message.chat.id, 'Оплата не удалась. Попробуйте сначала.')
+
+            else:
+                subscription_markup = types.InlineKeyboardMarkup(row_width=1)
+                buy_subscription = types.InlineKeyboardButton('Купить подписку', callback_data='buy_subscription')
+                subscription_markup.add(buy_subscription)
+                bot.send_message(
+                    message.chat.id,
+                    f"Похоже, что у вас еще нет подписки. Нажмите «Купить подписку», чтобы начать тестировать! ⚽\n",
+                    parse_mode='html',
+                    reply_markup=subscription_markup
+                )
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    try:
+        if call.message:
+            if call.data == 'buy_subscription':
+                bot.send_message(call.message.chat.id, 'Пожалуйста, напишите вашу электронную почту (мы ее не храним, она нужна только для проведения платежа).')
+                user_states[call.message.chat.id] = 'waiting_for_email'
 
     except Exception as e:
         print(repr(e))
