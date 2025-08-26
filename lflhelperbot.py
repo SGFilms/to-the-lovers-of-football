@@ -258,12 +258,9 @@ def view_users(message):
             response = response[:4091] + "..."
 
         bot.send_message(message.chat.id, response, parse_mode='html')
-
+        connection.close()
     except Exception as e:
         bot.reply_to(message, f"Ошибка при чтении базы данных: {str(e)}")
-    finally:
-        if 'connection' in locals():
-            connection.close()
 
 @bot.message_handler(commands=['help'])
 def help_handler(message):
