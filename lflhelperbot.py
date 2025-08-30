@@ -177,9 +177,9 @@ def welcome(message):
     )
     ''')
 
-    if message.from_user.username:
+    if message.from_user.id:
         # Проверяем, существует ли пользователь с таким username
-        cursor.execute('SELECT * FROM Users WHERE username = ?', (message.from_user.username,))
+        cursor.execute('SELECT * FROM Users WHERE username = ?', (message.from_user.id,))
         existing_user = cursor.fetchone()
 
         if existing_user is None:
@@ -187,12 +187,12 @@ def welcome(message):
             cursor.execute('''
             INSERT INTO Users (username, subscription_active, subscription_start_datetime, subscription_duration)
             VALUES (?, ?, ?, ?)
-            ''', (message.from_user.username, 0, None, ''))
+            ''', (message.from_user.id, 0, None, ''))
 
     connection.commit()
     connection.close()
 
-    if is_subscription_active(message.from_user.username):
+    if is_subscription_active(message.from_user.id):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("📅 Расписание игр")
         item2 = types.KeyboardButton("💳 Подписка")
@@ -269,16 +269,16 @@ def help_handler(message):
 @bot.message_handler(content_types=['text'])
 def commands_handler(message):
     if message.chat.type == 'private':
-        if is_subscription_active(message.from_user.username):
+        if is_subscription_active(message.from_user.id):
             if message.text == '📅 Расписание игр' or message.text == '/schedule':
                 bot.send_message(message.chat.id, 'Напишите название вашей команды так, как оно приведено на сайте ЛФЛ (если возникают ошибки, попробуйте скопировать название с сайта).')
                 user_states[message.chat.id] = 'waiting_for_team'
 
             elif message.text == '💳 Подписка' or message.text == '/subscription':
                 try:
-                    username = message.from_user.username
+                    username = message.from_user.id
                     if not username:
-                        bot.send_message(message.chat.id, "Не удалось определить ваш username в Telegram.")
+                        bot.send_message(message.chat.id, "Не удалось определить ваш id в Telegram.")
                         return
 
                     connection = sqlite3.connect('users.db')
@@ -337,7 +337,7 @@ def commands_handler(message):
 
             elif user_states.get(message.chat.id) == 'waiting_for_feedback':
                 feedback = message.text
-                username = message.chat.username
+                username = message.from_user.id
 
                 def transliterate(feedback, username):
                     username_result = username
@@ -369,7 +369,7 @@ def commands_handler(message):
                 else:
                     bot.send_message(message.chat.id, 'Я вас не понимаю. Напишите /help.')
 
-        if not is_subscription_active(message.from_user.username):
+        if not is_subscription_active(message.from_user.id):
             if message.text == '💳 Подписка' or message.text == '/subscription':
                 subscription_markup = types.InlineKeyboardMarkup(row_width=1)
                 buy_subscription = types.InlineKeyboardButton('Купить подписку', callback_data='buy_subscription')
@@ -378,7 +378,7 @@ def commands_handler(message):
 
             elif user_states.get(message.chat.id) == 'waiting_for_email':
                 email = message.text
-                username = message.from_user.username
+                username = message.from_user.id
                 bot.send_message(message.chat.id, 'Формируем заказ...')
                 payment = Payment.create({
                     "amount": {
@@ -426,7 +426,7 @@ def commands_handler(message):
                 bot.send_message(message.chat.id, f'Оплата: {payment.confirmation.confirmation_url}', parse_mode='html')
                 bot.send_message(message.chat.id, 'Ожидание оплаты обычно занимает до 2 минут. Вам придет уведомление о том, что оплата прошла успешно. Если ничего не произойдет, введите команду /start.')
 
-                if wait_for_payment_success(message.from_user.username):
+                if wait_for_payment_success(message.from_user.id):
                     try:
                         # Подключение к базе данных
                         connection = sqlite3.connect('users.db')
@@ -463,7 +463,7 @@ def commands_handler(message):
                             f"❌ Ошибка при активации подписки: {str(e)}"
                         )
 
-                elif Payment.find_one(get_user_column(message.chat.username, 'last_payment_id')).status == "canceled":
+                elif Payment.find_one(get_user_column(message.from_user.id, 'last_payment_id')).status == "canceled":
                     bot.send_message(message.chat.id, 'Оплата не удалась. Попробуйте сначала.')
 
             else:
