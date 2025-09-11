@@ -193,6 +193,25 @@ def welcome(message):
     connection.close()
 
     if is_subscription_active(message.from_user.id):
+        connection = sqlite3.connect('users.db')
+        cursor = connection.cursor()
+        cursor.execute("SELECT subscription_start_datetime, subscription_duration FROM Users WHERE username = ?", (message.from_user.id,))
+        result = cursor.fetchone()
+
+        sub_start, sub_duration = result
+
+        duration_dt = datetime.strptime(sub_duration, "%Y-%m-%d %H:%M:%S")
+        start_dt = datetime.strptime(sub_start, "%Y-%m-%d %H:%M:%S")
+
+        if duration_dt - start_dt < timedelta(days=30):
+            cursor.execute(f"UPDATE Users SET subscription_duration = ? WHERE username = ?", ((start_dt + timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S'), message.from_user.id,))
+            connection.commit()
+            connection.close()
+        else:
+            connection.close()
+
+
+    if is_subscription_active(message.from_user.id):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("📅 Расписание игр")
         item2 = types.KeyboardButton("💳 Подписка")
@@ -214,7 +233,7 @@ def welcome(message):
         bot.send_message(
             message.chat.id,
             f"Добро пожаловать, {message.from_user.first_name}!\n"
-            "🚀 <b>Запускаемся! Доступ к боту всего за 1 рубль до 15 сентября 2025!</b>\n"
+            "🚀 <b>Запускаемся! Доступ к боту на месяц всего за 1 рубль до 30 сентября 2025!</b>\n"
             "Я бот-помощник, позволяющий вам быстро и удобно найти нужную информацию с сайта Любительской Футбольной Лиги.\n"
             "Похоже, что у вас еще нет подписки. Нажмите «Купить подписку», чтобы начать тестировать! ⚽\n",
             parse_mode='html',
@@ -332,8 +351,10 @@ def commands_handler(message):
 
                     elif schedules[i] != 'На сайте расписания нет.' and len(schedules[i]) == 2:
                         bot.send_message(message.chat.id, f'<b>{teams_found[i]}</b>\n\nДата: {(datetime.strptime(schedules[i][0]['match_date_time'], "%Y-%m-%dT%H:%M:%S.%fZ") + timedelta(hours=3)).strftime("%d.%m.%Y, %H:%M")}\nСтадион: {schedules[i][0]['stadium_name']}\nАдрес: {schedules[i][0]['stadium_address']}\n<b>{schedules[i][0]['home_club_name']} VS {schedules[i][0]['away_club_name']}</b>\n\nДата: {(datetime.strptime(schedules[i][1]['match_date_time'], "%Y-%m-%dT%H:%M:%S.%fZ") + timedelta(hours=3)).strftime("%d.%m.%Y, %H:%M")}\nСтадион: {schedules[i][1]['stadium_name']}\nАдрес: {schedules[i][1]['stadium_address']}\n<b>{schedules[i][1]['home_club_name']} VS {schedules[i][1]['away_club_name']}</b>', parse_mode='html')
-
-                del user_states[message.chat.id]
+                try:
+                    del user_states[message.chat.id]
+                except Exception as e:
+                    pass
 
             elif user_states.get(message.chat.id) == 'waiting_for_feedback':
                 feedback = message.text
@@ -355,9 +376,11 @@ def commands_handler(message):
                 smtp_obj.quit()
 
                 bot.send_message(message.chat.id, 'Спасибо за ваш отзыв! Мы его получили 😊')
-
-                del user_states[message.chat.id]
-                del username, feedback
+                try:
+                    del user_states[username]
+                    del username, feedback
+                except Exception as e:
+                    pass
 
             else:
                 if message.text.lower() == 'привет':
@@ -374,7 +397,7 @@ def commands_handler(message):
                 subscription_markup = types.InlineKeyboardMarkup(row_width=1)
                 buy_subscription = types.InlineKeyboardButton('Купить подписку', callback_data='buy_subscription')
                 subscription_markup.add(buy_subscription)
-                bot.send_message(message.chat.id, '<b>Успейте протестировать всего за 1 рубль!</b>\n\n<b>Что будет дальше?</b>\n15 сентября 2025 года стартует подписка за 899 руб. в год и 100 руб. в месяц.\n\nНажмите «Купить подписку», чтобы начать тестировать за 1 рубль! ⚽', parse_mode='html', reply_markup=subscription_markup)
+                bot.send_message(message.chat.id, '<b>Успейте протестировать всего за 1 рубль!</b>\n\n<b>Что будет дальше?</b>\n30 сентября 2025 года стартует подписка за 899 руб. в год и 100 руб. в месяц.\n\nНажмите «Купить подписку», чтобы получить доступ на месяц за 1 рубль! ⚽', parse_mode='html', reply_markup=subscription_markup)
 
             elif user_states.get(message.chat.id) == 'waiting_for_email':
                 email = message.text
@@ -443,7 +466,7 @@ def commands_handler(message):
                                     subscription_start_datetime = ?,
                                     subscription_duration = ?
                                 WHERE username = ?
-                            ''', (now, datetime.strptime("15.09.2025 00:00:00", "%d.%m.%Y %H:%M:%S").strftime('%Y-%m-%d %H:%M:%S'), username))
+                            ''', (now, (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S'), username))
 
                         connection.commit()
                         connection.close()
