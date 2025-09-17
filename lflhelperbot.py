@@ -124,14 +124,33 @@ def is_subscription_active(username):
     cursor = connection.cursor()
 
     # Получаем статус подписки и дату окончания
-    cursor.execute("SELECT subscription_active, subscription_duration FROM Users WHERE username = ?", (username,))
+    cursor.execute("SELECT subscription_active, subscription_start_datetime, subscription_duration, last_payment_id FROM Users WHERE username = ?", (username,))
     result = cursor.fetchone()
     connection.close()
 
     if result is None:
         return False  # Пользователь не найден
 
-    active, duration_str = result
+    active, start_datetime, duration_str, last_payment_id = result
+
+    if last_payment_id != '' or last_payment_id is not None:
+        if datetime.strptime(duration_str, '%Y-%m-%d %H:%M:%S') < datetime.strptime('2025-09-30 00:00:00', '%Y-%m-%d %H:%M:%S'):
+            connection = sqlite3.connect('users.db')
+            cursor = connection.cursor()
+
+            # Обновление данных пользователя
+            cursor.execute('''
+                                    UPDATE Users 
+                                    SET 
+                                        subscription_active = 1,
+                                        subscription_duration = ?
+                                    WHERE username = ?
+                                ''', (datetime.strptime('2025-09-30 00:00:00', '%Y-%m-%d %H:%M:%S'), username))
+
+            connection.commit()
+            connection.close()
+            return True
+
 
     if active != 1:
         return False  # Подписка уже неактивна
