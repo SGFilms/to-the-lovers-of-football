@@ -5,11 +5,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Telegram
-TOKEN = os.getenv("BOT_TOKEN", "ТВОЙ_ТОКЕН_ЗДЕСЬ")
+TOKEN = os.getenv("BOT_TOKEN", "8361564766:AAEqlnmNFA2RQI7ENdkExBIdJXfegGs7ax0")
 
 # YooKassa
-SHOP_ID = os.getenv("SHOP_ID", "ТВОЙ_SHOP_ID")
-YK_API_KEY = os.getenv("YK_API_KEY", "ТВОЙ_SECRET_KEY")
+SHOP_ID = os.getenv("SHOP_ID", "1149664")
+YK_API_KEY = os.getenv("YK_API_KEY", "live_RjoUbbxMIzlSg8sy1vXY8aiYW7GezMZPVRTk-6KzrtU")
 
 # Email settings
 SMTP_SERVER = "smtp.mail.ru"
