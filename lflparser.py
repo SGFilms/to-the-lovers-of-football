@@ -1,76 +1,109 @@
-import requests
+import aiohttp
 from bs4 import BeautifulSoup
 import json
+import asyncio
+import logging
 
+# Настройка логгера
+logger = logging.getLogger(__name__)
 
-def get_team_code(team):
+async def get_team_code(session, team):
     search_url = f'https://page.lfl.ru/search?search={team.lower().replace(" ", "%20")}'
-    response = requests.get(search_url)
-    soup = BeautifulSoup(response.text, 'lxml')
-    data = soup.find_all('li', class_='style_searchItem__li__mziH_')
-    codes_raw = []
+    try:
+        async with session.get(search_url) as response:
+            if response.status != 200:
+                return []
+            text = await response.text()
 
-    # Extract numeric codes from hrefs
-    for item in data:
-        href = item.find('a').get('href')
-        code = ''.join(char for char in href if char.isdigit())
-        codes_raw.append(code)
+        soup = BeautifulSoup(text, 'lxml')
+        data = soup.find_all('li', class_='style_searchItem__li__mziH_')
+        codes_raw = []
 
-    # Remove duplicates while preserving order
-    seen = set()
-    codes = [code for code in codes_raw if not (code in seen or seen.add(code))]
+        for item in data:
+            try:
+                href = item.find('a').get('href')
+                code = ''.join(char for char in href if char.isdigit())
+                codes_raw.append(code)
+            except AttributeError:
+                continue
 
-    return codes
+        # Remove duplicates preserving order
+        seen = set()
+        codes = [code for code in codes_raw if not (code in seen or seen.add(code))]
+        return codes
+    except Exception as e:
+        logger.error(f"Error getting team code: {e}")
+        return []
 
-def get_schedule(team):
+async def get_schedule(team):
     schedules = []
-    codes = get_team_code(team)
     teams_found = []
-    for code in codes:
-        error_occurred = False
-        calendar_url = f'https://page.lfl.ru/matches-calendar/{code}?order=asc&currentDate=upcoming'
-        response = requests.get(calendar_url)
-        soup = BeautifulSoup(response.text, 'lxml')
-        script_tag = soup.find('script', {'id': '__NEXT_DATA__'})
-        json_data = json.loads(script_tag.string)
-        try:
-            if json_data['props']['pageProps']['matches'] is None:
-                error_occurred = True
 
-            elif json_data['props']['pageProps']['matches']['length'] == 1:
-                first_two_matches = [{
-                    "match_date_time": json_data['props']['pageProps']['matches']['data'][0]['match_date_time'],
-                    "stadium_name": json_data['props']['pageProps']['matches']['data'][0]['stadium_name'],
-                    "stadium_address": json_data['props']['pageProps']['matches']['data'][0]['stadium_address'],
-                    "home_club_name": json_data['props']['pageProps']['matches']['data'][0]['home_club_name'],
-                    "away_club_name": json_data['props']['pageProps']['matches']['data'][0]['away_club_name'],
-                }]
-                schedules.append(first_two_matches)
-                teams_found.append(json_data['props']['pageProps']['club']['name'])
+    async with aiohttp.ClientSession() as session:
+        codes = await get_team_code(session, team)
 
-            elif json_data['props']['pageProps']['matches']['length'] > 1:
-                first_two_matches = [{
-                    "match_date_time": json_data['props']['pageProps']['matches']['data'][0]['match_date_time'],
-                    "stadium_name": json_data['props']['pageProps']['matches']['data'][0]['stadium_name'],
-                    "stadium_address": json_data['props']['pageProps']['matches']['data'][0]['stadium_address'],
-                    "home_club_name": json_data['props']['pageProps']['matches']['data'][0]['home_club_name'],
-                    "away_club_name": json_data['props']['pageProps']['matches']['data'][0]['away_club_name'],
-                }, {
-                    "match_date_time": json_data['props']['pageProps']['matches']['data'][1]['match_date_time'],
-                    "stadium_name": json_data['props']['pageProps']['matches']['data'][1]['stadium_name'],
-                    "stadium_address": json_data['props']['pageProps']['matches']['data'][1]['stadium_address'],
-                    "home_club_name": json_data['props']['pageProps']['matches']['data'][1]['home_club_name'],
-                    "away_club_name": json_data['props']['pageProps']['matches']['data'][1]['away_club_name'],
-                }]
-                schedules.append(first_two_matches)
-                teams_found.append(json_data['props']['pageProps']['club']['name'])
-        except (RuntimeError, TypeError, NameError, KeyError, ValueError, IndexError, AttributeError):
-            error_occurred = True
+        # Создаем список задач для параллельного выполнения запросов к календарю
+        tasks = []
+        for code in codes:
+            url = f'https://page.lfl.ru/matches-calendar/{code}?order=asc&currentDate=upcoming'
+            tasks.append(fetch_calendar(session, url))
 
-        if error_occurred:
-            continue
+        results = await asyncio.gather(*tasks)
 
+        for res in results:
+            if res:
+                teams_found.append(res['team_name'])
+                schedules.append(res['matches'])
 
     return teams_found, schedules
 
+async def fetch_calendar(session, url):
+    try:
+        async with session.get(url) as response:
+            if response.status != 200:
+                return None
+            text = await response.text()
 
+        soup = BeautifulSoup(text, 'lxml')
+        script_tag = soup.find('script', {'id': '__NEXT_DATA__'})
+
+        if not script_tag:
+            return None
+
+        json_data = json.loads(script_tag.string)
+
+        try:
+            club_name = json_data['props']['pageProps']['club']['name']
+            matches_data = json_data['props']['pageProps']['matches']
+
+            if matches_data is None:
+                return {'team_name': club_name, 'matches': 'На сайте расписания нет.'}
+
+            data_list = matches_data.get('data', [])
+            length = matches_data.get('length', 0)
+
+            parsed_matches = []
+
+            # Берем до 2 матчей
+            limit = min(length, 2)
+            for i in range(limit):
+                match = data_list[i]
+                parsed_matches.append({
+                    "match_date_time": match['match_date_time'],
+                    "stadium_name": match['stadium_name'],
+                    "stadium_address": match['stadium_address'],
+                    "home_club_name": match['home_club_name'],
+                    "away_club_name": match['away_club_name'],
+                })
+
+            if not parsed_matches:
+                return {'team_name': club_name, 'matches': 'На сайте расписания нет.'}
+
+            return {'team_name': club_name, 'matches': parsed_matches}
+
+        except (KeyError, TypeError, IndexError) as e:
+            return None
+
+    except Exception as e:
+        logger.error(f"Error fetching calendar: {e}")
+        return None
