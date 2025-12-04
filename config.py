@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Telegram
-TOKEN = os.getenv("BOT_TOKEN", "8361564766:AAEqlnmNFA2RQI7ENdkExBIdJXfegGs7ax0")
+TOKEN = os.getenv("BOT_TOKEN", "8361564766:AAFqUmdUG96uVRFS2CGuL0WXRPIoFvtbxVk")
 
 # YooKassa
 SHOP_ID = os.getenv("SHOP_ID", "1149664")
