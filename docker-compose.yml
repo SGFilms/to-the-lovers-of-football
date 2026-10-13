@@ -1,0 +1,51 @@
+# Локально:      docker compose up --build
+# На сервере:    docker compose --profile prod up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lflbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-lflbot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Порт базы наружу не открыт: к ней подключается только бот внутри сети Docker.
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["prod"]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Задайте DOMAIN в .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

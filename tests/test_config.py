@@ -1,0 +1,55 @@
+import pytest
+from pydantic import ValidationError
+from sqlalchemy import make_url
+
+from lflbot.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("DATABASE_URL", "ADMIN_IDS", "POSTGRES_PASSWORD", "DISPLAY_TIMEZONE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BOT_TOKEN", "123:abc")
+
+
+def make_settings() -> Settings:
+    return Settings(_env_file=None)
+
+
+def test_admin_ids_from_comma_separated_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_IDS", "111, 222")
+    assert make_settings().admin_ids == [111, 222]
+
+
+def test_admin_ids_single_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_IDS", "111")
+    assert make_settings().admin_ids == [111]
+
+
+def test_admin_ids_empty_by_default() -> None:
+    assert make_settings().admin_ids == []
+
+
+def test_db_url_escapes_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ss/word")
+    url = make_url(make_settings().db_url())
+    assert url.password == "p@ss/word"
+    assert url.host == "db"
+    assert url.drivername == "postgresql+asyncpg"
+
+
+def test_database_url_overrides_parts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u@h:1/x")
+    assert make_settings().db_url() == "postgresql+asyncpg://u@h:1/x"
+
+
+def test_invalid_timezone_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPLAY_TIMEZONE", "Mars/Olympus")
+    with pytest.raises(ValidationError):
+        make_settings()
+
+
+def test_bot_token_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BOT_TOKEN")
+    with pytest.raises(ValidationError):
+        make_settings()
