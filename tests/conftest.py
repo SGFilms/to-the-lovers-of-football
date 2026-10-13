@@ -47,7 +47,7 @@ async def engine(migrated_db: str) -> AsyncIterator[AsyncEngine]:
     engine = create_engine(migrated_db)
     yield engine
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE users"))
+        await conn.execute(text("TRUNCATE users, payments"))
     await engine.dispose()
 
 

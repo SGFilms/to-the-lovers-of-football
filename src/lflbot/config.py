@@ -1,5 +1,6 @@
 """Настройки бота. Все значения берутся из переменных окружения или файла .env."""
 
+from decimal import Decimal
 from functools import cached_property
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -45,6 +46,21 @@ class Settings(DatabaseSettings):
     web_host: str = "0.0.0.0"
     web_port: int = 8080
 
+    # ЮKassa. Пока ключи не заданы, бот работает, но оплату не принимает.
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: SecretStr = SecretStr("")
+    # Проверять, что уведомления приходят с адресов ЮKassa. Выключать только для отладки.
+    yookassa_check_ip: bool = True
+    # Как часто сверять неоплаченные платежи с ЮKassa, в секундах.
+    payment_check_interval: int = 60
+    # Куда ЮKassa вернёт пользователя после оплаты. Пусто — в этот бот в Telegram.
+    payment_return_url: str = ""
+
+    subscription_price: Decimal = Decimal("1.00")
+    subscription_days: int = 30
+    # Название услуги в платеже ЮKassa и в уведомлении администратору для чека.
+    payment_description: str = "Подписка на расписание матчей ЛФЛ, 30 дней"
+
     # Часовой пояс, в котором пользователю показываются даты и время.
     display_timezone: str = "Europe/Moscow"
 
@@ -67,6 +83,10 @@ class Settings(DatabaseSettings):
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError(f"Неизвестный часовой пояс: {value}") from exc
         return value
+
+    @property
+    def payments_enabled(self) -> bool:
+        return bool(self.yookassa_shop_id and self.yookassa_secret_key.get_secret_value())
 
     @cached_property
     def tz(self) -> ZoneInfo:
