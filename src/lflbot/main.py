@@ -8,6 +8,7 @@ from aiohttp import web
 from lflbot.bot import BOT_COMMANDS, create_dispatcher
 from lflbot.config import Settings
 from lflbot.db import create_engine, create_session_factory
+from lflbot.lfl import LflClient
 from lflbot.web import create_web_app
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,8 @@ async def main() -> None:
     )
     dp = create_dispatcher(session_factory)
     dp["settings"] = settings
+    lfl = LflClient()
+    dp["lfl"] = lfl
 
     runner = web.AppRunner(create_web_app(engine))
     await runner.setup()
@@ -42,6 +45,7 @@ async def main() -> None:
         await dp.start_polling(bot)
     finally:
         await runner.cleanup()
+        await lfl.close()
         await bot.session.close()
         await engine.dispose()
         logger.info("Бот остановлен")
