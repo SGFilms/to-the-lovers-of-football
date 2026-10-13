@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.gigaide
+*.iml
+.env
+.venv
+venv
+backups
+tests
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
