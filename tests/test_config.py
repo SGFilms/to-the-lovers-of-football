@@ -7,7 +7,14 @@ from lflbot.config import Settings
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("DATABASE_URL", "ADMIN_IDS", "POSTGRES_PASSWORD", "DISPLAY_TIMEZONE"):
+    for name in (
+        "DATABASE_URL",
+        "ADMIN_IDS",
+        "POSTGRES_PASSWORD",
+        "DISPLAY_TIMEZONE",
+        "YOOKASSA_SHOP_ID",
+        "YOOKASSA_SECRET_KEY",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("BOT_TOKEN", "123:abc")
 
@@ -53,3 +60,14 @@ def test_bot_token_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BOT_TOKEN")
     with pytest.raises(ValidationError):
         make_settings()
+
+
+def test_payments_disabled_without_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert not make_settings().payments_enabled
+    monkeypatch.setenv("YOOKASSA_SHOP_ID", "123")
+    assert not make_settings().payments_enabled
+    monkeypatch.setenv("YOOKASSA_SECRET_KEY", "test_secret")
+    settings = make_settings()
+    assert settings.payments_enabled
+    assert str(settings.subscription_price) == "1.00"
+    assert settings.subscription_days == 30

@@ -6,7 +6,13 @@ START = (
     "Сейчас бот обновляется. Совсем скоро здесь появится поиск расписания."
 )
 
-HELP = "<b>Как пользоваться ботом</b>\n\n/start — главное меню\n/help — эта справка"
+HELP = (
+    "<b>Как пользоваться ботом</b>\n\n"
+    "/start — главное меню\n"
+    "/subscribe — оформить или продлить подписку\n"
+    "/subscription — моя подписка\n"
+    "/help — эта справка"
+)
 
 ADMIN_SCHEDULE_USAGE = (
     "Напишите название команды после команды, например:\n<code>/schedule Монтана</code>"
@@ -25,3 +31,57 @@ CHOOSE_TEAM_MORE = (
 NO_UPCOMING = "У команды <b>{team}</b> пока нет запланированных матчей."
 SCHEDULE_HEADER = "⚽ <b>{team}</b>\n{league}"
 TIME_UNKNOWN = "время уточняется"
+
+# Подписка и оплата
+SUBSCRIBE_OFFER = (
+    "💳 <b>Подписка на {days} дней — {price} ₽</b>\n\n"
+    "Нажмите «Оплатить», оплатите на странице ЮKassa и возвращайтесь в бот: "
+    "подписка включится сама, обычно в течение минуты."
+)
+SUBSCRIBE_OFFER_ACTIVE = (
+    "💳 <b>Продление на {days} дней — {price} ₽</b>\n\n"
+    "Подписка активна до <b>{ends_at}</b>. Оплата добавит ещё {days} дней к этой дате."
+)
+PAY_BUTTON = "Оплатить {price} ₽"
+CHECK_PAYMENT_BUTTON = "Я оплатил"
+RENEW_BUTTON = "Продлить подписку"
+PAYMENTS_DISABLED = "Оплата пока не подключена. Загляните чуть позже."
+PAYMENT_CREATE_FAILED = (
+    "😔 Не получилось создать платёж: платёжный сервис не ответил. "
+    "Попробуйте ещё раз через пару минут."
+)
+PAYMENT_CHECK_FAILED = "Не получилось проверить оплату. Попробуйте через минуту."
+PAYMENT_NOT_YET = "Оплата ещё не поступила. Если вы уже заплатили, подождите минуту."
+PAYMENT_CANCELED = "Этот платёж отменён. Чтобы оплатить, оформите подписку заново: /subscribe"
+PAYMENT_ALREADY_DONE = "Эта оплата уже получена ✅"
+PAYMENT_DONE_MARK = "\n\n✅ Оплачено"
+
+PAID = "✅ <b>Оплата получена!</b>\nПодписка активна до <b>{ends_at}</b>."
+REFUNDED_ACTIVE = "↩️ Деньги за оплату возвращены. Подписка активна до <b>{ends_at}</b>."
+REFUNDED_ENDED = "↩️ Деньги за оплату возвращены, подписка отключена."
+
+MY_SUBSCRIPTION_ACTIVE = "✅ Подписка активна до <b>{ends_at}</b>."
+MY_SUBSCRIPTION_ENDED = "Подписка закончилась {ends_at}. Продлить: /subscribe"
+MY_SUBSCRIPTION_NONE = "Подписки пока нет. Оформить: /subscribe"
+PAYMENT_HISTORY = "\n\n<b>Оплаты</b>\n{lines}"
+PAYMENT_HISTORY_LINE = "{date} — {amount} ₽"
+PAYMENT_HISTORY_REFUNDED = "{date} — {amount} ₽, возвращено"
+
+REMINDER_3 = "⏳ Подписка закончится через 3 дня, <b>{ends_at}</b>."
+REMINDER_1 = "⏳ Подписка закончится меньше чем через сутки, <b>{ends_at}</b>."
+REMINDER_0 = "Подписка закончилась. Продлите её, чтобы снова смотреть расписание."
+
+# Администраторам: данные для чека в «Мой налог».
+ADMIN_PAID = (
+    "💰 <b>Новая оплата: {amount} ₽</b>\n"
+    "Дата: {date}\n"
+    "Услуга: {service}\n"
+    "Покупатель: физическое лицо (Telegram ID <code>{user_id}</code>)\n"
+    "Платёж ЮKassa: <code>{payment_id}</code>\n\n"
+    "Не забудьте пробить чек в «Мой налог»."
+)
+ADMIN_REFUNDED = (
+    "↩️ <b>Возврат: {amount} ₽</b>\n"
+    "Платёж ЮKassa: <code>{payment_id}</code> (Telegram ID <code>{user_id}</code>)\n\n"
+    "Аннулируйте чек по этой оплате в «Мой налог»."
+)
