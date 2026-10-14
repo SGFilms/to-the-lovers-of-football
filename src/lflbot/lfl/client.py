@@ -5,7 +5,9 @@ import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 import httpx
 
@@ -23,6 +25,43 @@ RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 class LflUnavailableError(Exception):
     """Сайт ЛФЛ не ответил или ответил так, что данные не разобрать."""
+
+
+class _PausedError(LflUnavailableError):
+    """Запрос не отправлялся: после сбоя бот какое-то время не трогает сайт."""
+
+
+# Какая страница сайта: поиск клубов или календарь клуба.
+Page = Literal["search", "calendar"]
+# unavailable — сайт не ответил; layout — ответил, но данные не разобрать (сменилась вёрстка).
+FailureKind = Literal["unavailable", "layout"]
+
+
+@dataclass(frozen=True)
+class LflFailure:
+    page: Page
+    kind: FailureKind
+    detail: str
+
+
+@dataclass
+class LflHealth:
+    """Как сайт отвечал в последний раз: для статистики администратора."""
+
+    last_ok_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    last_failure: LflFailure | None = None
+
+    @property
+    def failing(self) -> bool:
+        """Последний запрос к сайту не удался."""
+        if self.last_failure_at is None:
+            return False
+        return self.last_ok_at is None or self.last_failure_at > self.last_ok_at
+
+
+OnFailure = Callable[[LflFailure], Awaitable[None]]
+OnSuccess = Callable[[Page], Awaitable[None]]
 
 
 class TtlCache:
@@ -85,6 +124,8 @@ class LflClient:
         backoff: float = 2.0,
         cooldown: float = 5 * 60,
         clock: Callable[[], float] = time.monotonic,
+        on_failure: OnFailure | None = None,
+        on_success: OnSuccess | None = None,
     ) -> None:
         self._http = http or httpx.AsyncClient(
             base_url=BASE_URL,
@@ -103,6 +144,10 @@ class LflClient:
         self._paused_until = float("-inf")
         # Одинаковые запросы, пришедшие одновременно, ждут один и тот же ответ сайта.
         self._inflight: dict[str, asyncio.Future[Any]] = {}
+        self.health = LflHealth()
+        # Сообщить администраторам о сбое и о том, что сайт снова отвечает.
+        self.on_failure = on_failure
+        self.on_success = on_success
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -113,13 +158,14 @@ class LflClient:
             return ClubSearch(clubs=[], total=0)
         return await self._cached(
             f"search:{query.casefold()}",
-            lambda: self._fetch("/search", {"search": query}, parse_search),
+            lambda: self._fetch("search", "/search", {"search": query}, parse_search),
         )
 
     async def club_schedule(self, club_id: int) -> ClubSchedule:
         return await self._cached(
             f"calendar:{club_id}",
             lambda: self._fetch(
+                "calendar",
                 f"/matches-calendar/{club_id}",
                 {"order": "asc", "currentDate": "upcoming"},
                 parse_calendar,
@@ -162,19 +208,48 @@ class LflClient:
         return value
 
     async def _fetch(
-        self, path: str, params: dict[str, str], parse: Callable[[dict[str, Any]], Any]
+        self,
+        page: Page,
+        path: str,
+        params: dict[str, str],
+        parse: Callable[[dict[str, Any]], Any],
     ) -> Any:
-        html = await self._get_html(path, params)
         try:
-            return parse(extract_next_data(html))
+            html = await self._get_html(path, params)
+        except _PausedError:
+            raise
+        except LflUnavailableError as exc:
+            await self._failed(LflFailure(page, "unavailable", str(exc)))
+            raise
+        try:
+            value = parse(extract_next_data(html))
         except LflParseError as exc:
             # Сайт ответил, но вёрстка изменилась: повтор не поможет, нужен разработчик.
             logger.error("Не удалось разобрать %s: %s", path, exc)
+            await self._failed(LflFailure(page, "layout", f"{path}: {exc}"))
             raise LflUnavailableError(str(exc)) from exc
+        self.health.last_ok_at = datetime.now(UTC)
+        if self.on_success is not None:
+            await self._notify(self.on_success, page)
+        return value
+
+    async def _failed(self, failure: LflFailure) -> None:
+        self.health.last_failure_at = datetime.now(UTC)
+        self.health.last_failure = failure
+        if self.on_failure is not None:
+            await self._notify(self.on_failure, failure)
+
+    @staticmethod
+    async def _notify(callback: Callable[[Any], Awaitable[None]], arg: Any) -> None:
+        # Сбой уведомления не должен мешать пользователю получить ответ.
+        try:
+            await callback(arg)
+        except Exception:
+            logger.exception("Не удалось сообщить о состоянии сайта ЛФЛ")
 
     async def _get_html(self, path: str, params: dict[str, str]) -> str:
         if self._clock() < self._paused_until:
-            raise LflUnavailableError("запросы к сайту на паузе после сбоя")
+            raise _PausedError("запросы к сайту на паузе после сбоя")
 
         last_error: Exception | None = None
         for attempt in range(1, self._attempts + 1):

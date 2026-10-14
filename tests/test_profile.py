@@ -3,8 +3,9 @@ from unittest.mock import AsyncMock
 
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.methods import SetMyCommands
+from aiogram.types import BotCommandScopeChat
 
-from lflbot.bot import BOT_COMMANDS, texts
+from lflbot.bot import ADMIN_COMMANDS, BOT_COMMANDS, texts
 from lflbot.bot.profile import apply_profile
 from tests.tg import make_settings
 
@@ -29,7 +30,8 @@ async def test_sets_profile_and_avatar_when_missing() -> None:
     bot = fake_bot()
     await apply_profile(bot, SETTINGS)
 
-    bot.set_my_commands.assert_awaited_once_with(BOT_COMMANDS)
+    calls = bot.set_my_commands.await_args_list
+    assert calls[0].args == (BOT_COMMANDS,) and calls[0].kwargs == {}
     bot.set_my_description.assert_awaited_once_with(
         texts.BOT_DESCRIPTION.format(price="1", days=30)
     )
@@ -50,3 +52,15 @@ async def test_telegram_errors_do_not_stop_the_bot() -> None:
         method=SetMyCommands(commands=[]), message="timeout"
     )
     await apply_profile(bot, SETTINGS)
+
+
+async def test_admins_see_admin_commands() -> None:
+    bot = fake_bot()
+    await apply_profile(bot, make_settings(admin_ids=[1, 2]))
+
+    scoped = [call for call in bot.set_my_commands.await_args_list if "scope" in call.kwargs]
+    assert [call.kwargs["scope"] for call in scoped] == [
+        BotCommandScopeChat(chat_id=1),
+        BotCommandScopeChat(chat_id=2),
+    ]
+    assert all(call.args == (BOT_COMMANDS + ADMIN_COMMANDS,) for call in scoped)

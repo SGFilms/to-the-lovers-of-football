@@ -8,11 +8,14 @@ from aiogram.enums import ParseMode
 from aiohttp import web
 
 from lflbot.bot import create_dispatcher
+from lflbot.bot.alerts import BotAlerts
 from lflbot.bot.notify import Notifier
 from lflbot.bot.profile import apply_profile
 from lflbot.config import Settings
 from lflbot.db import create_engine, create_session_factory
+from lflbot.db.base import utcnow
 from lflbot.lfl import LflClient
+from lflbot.monitoring import Alerts
 from lflbot.payments import PaymentService, YooKassaClient
 from lflbot.payments.webhook import setup_webhook
 from lflbot.reminders import send_due_reminders
@@ -23,13 +26,20 @@ logger = logging.getLogger(__name__)
 REMINDER_INTERVAL = 15 * 60
 
 
-async def run_periodically(name: str, interval: float, job: Callable[[], Awaitable[object]]):
+async def run_periodically(
+    name: str,
+    interval: float,
+    job: Callable[[], Awaitable[object]],
+    on_error: Callable[[str, Exception], Awaitable[None]] | None = None,
+):
     """Запускает job каждые interval секунд. Ошибка одного запуска не останавливает следующие."""
     while True:
         try:
             await job()
-        except Exception:
+        except Exception as exc:
             logger.exception("Фоновая задача «%s» завершилась с ошибкой", name)
+            if on_error is not None:
+                await on_error(name, exc)
         await asyncio.sleep(interval)
 
 
@@ -49,6 +59,7 @@ async def main() -> None:
     )
     me = await bot.get_me()
     notifier = Notifier(bot, settings)
+    alerts = BotAlerts(Alerts(notifier.to_admins))
 
     yookassa = None
     if settings.payments_enabled:
@@ -68,10 +79,13 @@ async def main() -> None:
     )
 
     dp = create_dispatcher(session_factory)
+    dp.errors.register(alerts.update_failed)
     dp["settings"] = settings
-    lfl = LflClient()
+    lfl = LflClient(on_failure=alerts.lfl_failed, on_success=alerts.lfl_ok)
     dp["lfl"] = lfl
     dp["payments"] = payments
+    dp["notifier"] = notifier
+    dp["started_at"] = utcnow()
 
     app = create_web_app(engine, legal_pages(settings))
     if payments.enabled:
@@ -88,10 +102,15 @@ async def main() -> None:
     tasks = [
         asyncio.create_task(
             run_periodically(
-                "сверка платежей", settings.payment_check_interval, payments.sync_pending
+                "сверка платежей",
+                settings.payment_check_interval,
+                payments.sync_pending,
+                alerts.job_failed,
             )
         ),
-        asyncio.create_task(run_periodically("напоминания", REMINDER_INTERVAL, reminders_job)),
+        asyncio.create_task(
+            run_periodically("напоминания", REMINDER_INTERVAL, reminders_job, alerts.job_failed)
+        ),
     ]
 
     try:

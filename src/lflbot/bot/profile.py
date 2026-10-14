@@ -4,9 +4,9 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import FSInputFile, InputProfilePhotoStatic
+from aiogram.types import BotCommandScopeChat, FSInputFile, InputProfilePhotoStatic
 
-from lflbot.bot import BOT_COMMANDS, texts
+from lflbot.bot import ADMIN_COMMANDS, BOT_COMMANDS, texts
 from lflbot.bot.cover import AVATAR
 from lflbot.config import Settings
 from lflbot.legal import format_amount
@@ -36,3 +36,16 @@ async def apply_profile(bot: Bot, settings: Settings) -> None:
             logger.info("Установлен аватар бота")
     except TelegramAPIError:
         logger.exception("Не удалось обновить профиль бота")
+    await apply_admin_commands(bot, settings)
+
+
+async def apply_admin_commands(bot: Bot, settings: Settings) -> None:
+    """Администраторам меню команд показывает ещё и служебные команды."""
+    for admin_id in settings.admin_ids:
+        try:
+            await bot.set_my_commands(
+                BOT_COMMANDS + ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+        except TelegramAPIError as exc:
+            # Обычно значит, что администратор ещё не писал боту. Команды при этом работают.
+            logger.warning("Не удалось показать команды администратору %s: %s", admin_id, exc)

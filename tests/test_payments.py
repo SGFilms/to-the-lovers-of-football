@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from lflbot.db import Payment, User, create_session_factory
-from lflbot.payments import PaymentService, apply_remote
+from lflbot.payments import PaymentService, YooKassaError, apply_remote
 from lflbot.payments.service import REUSE_LINK_FOR
 from lflbot.users import get_or_create_user
 from tests.conftest import requires_db
@@ -268,3 +268,14 @@ async def test_double_click_creates_one_payment(
 
     assert first == second
     assert len(yookassa.created) == 1
+
+
+async def test_sync_pending_raises_when_nothing_could_be_checked(
+    service: PaymentService, session: AsyncSession, yookassa: FakeYooKassa
+) -> None:
+    await service.checkout(session, USER)
+    await service.checkout(session, 43)
+    yookassa.fail = True
+    # Ни один платёж не проверен: об этом должны узнать администраторы.
+    with pytest.raises(YooKassaError):
+        await service.sync_pending()

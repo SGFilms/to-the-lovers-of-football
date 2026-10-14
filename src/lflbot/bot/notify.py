@@ -1,6 +1,8 @@
-"""Сообщения, которые бот отправляет сам: об оплатах, возвратах и окончании подписки."""
+"""Сообщения, которые бот отправляет сам: об оплатах, возвратах, окончании подписки
+и сбоях."""
 
 import logging
+from datetime import datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
@@ -49,8 +51,7 @@ class Notifier:
                 amount=amount, user_id=change.user_id, payment_id=change.payment_id
             )
         await self._send(change.user_id, user_text, markup=menu_only_keyboard())
-        for admin_id in self.settings.admin_ids:
-            await self._send(admin_id, admin_text)
+        await self.to_admins(admin_text)
 
     async def reminder(self, reminder: Reminder) -> None:
         text = REMINDER_TEXTS[reminder.days].format(
@@ -58,11 +59,22 @@ class Notifier:
         )
         await self._send(reminder.user_id, text, markup=renew_keyboard())
 
+    async def granted(self, user_id: int, days: int, ends_at: datetime) -> bool:
+        """Сообщает пользователю, что администратор добавил ему дни. False — не дошло."""
+        text = texts.GRANTED.format(days=days, ends_at=format_moment(ends_at, self.settings.tz))
+        return await self._send(user_id, text, markup=menu_only_keyboard())
+
+    async def to_admins(self, text: str) -> None:
+        for admin_id in self.settings.admin_ids:
+            await self._send(admin_id, text)
+
     async def _send(
         self, chat_id: int, text: str, *, markup: InlineKeyboardMarkup | None = None
-    ) -> None:
+    ) -> bool:
         try:
             await self.bot.send_message(chat_id, text, reply_markup=markup)
         except TelegramAPIError as exc:
             # Например, пользователь заблокировал бота. Остальным это не мешает.
             logger.warning("Не удалось написать %s: %s", chat_id, exc)
+            return False
+        return True

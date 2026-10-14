@@ -26,7 +26,7 @@ from lflbot.bot import create_dispatcher, texts
 from lflbot.bot.callbacks import nav
 from lflbot.bot.middlewares import DbSessionMiddleware
 from lflbot.db import create_session_factory
-from lflbot.lfl import ClubSearch
+from lflbot.lfl import ClubSearch, LflHealth
 from lflbot.payments import PaymentService
 from tests.conftest import requires_db
 from tests.fakes import PRICE
@@ -138,6 +138,9 @@ def setup(engine: AsyncEngine, session_mock: RecordingSession):
     dp["settings"] = make_settings(admin_ids=[1])
     dp["lfl"] = lfl
     dp["payments"] = PaymentService(factory, None, price=PRICE, days=30, description="")
+    dp["notifier"] = AsyncMock()
+    dp["started_at"] = NOW
+    lfl.health = LflHealth()
     return bot, dp, lfl
 
 
@@ -197,3 +200,20 @@ async def test_command_leaves_feedback_mode(setup, session_mock: RecordingSessio
     await dp.feed_update(bot, text_update("Монтана"))
     assert not session_mock.of(ForwardMessage)
     lfl.search_clubs.assert_awaited_once()
+
+
+async def test_admin_commands_are_hidden_from_users(setup, session_mock: RecordingSession) -> None:
+    bot, dp, _ = setup
+    for command in ("/admin", "/stats", "/user 42", "/grant 42 30", "/payment p"):
+        await dp.feed_update(bot, text_update(command))
+    assert {m.text for m in session_mock.of(SendMessage)} == {texts.UNKNOWN_COMMAND}
+
+
+async def test_admin_commands_work_for_admins(setup, session_mock: RecordingSession) -> None:
+    bot, dp, _ = setup
+    dp["settings"] = make_settings(admin_ids=[USER])
+    await dp.feed_update(bot, text_update("/admin"))
+    await dp.feed_update(bot, text_update("/stats"))
+    help_text, stats = session_mock.of(SendMessage)
+    assert help_text.text == texts.ADMIN_HELP
+    assert stats.text.startswith("📊 <b>Статистика</b>")
