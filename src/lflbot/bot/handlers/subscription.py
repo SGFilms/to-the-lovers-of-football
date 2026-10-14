@@ -1,20 +1,23 @@
-"""Оформление подписки и проверка оплаты."""
+"""Оформление подписки, проверка оплаты и экран «Моя подписка»."""
 
 import logging
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lflbot.bot import texts
+from lflbot.bot.callbacks import CheckPaymentCallback, NavCallback, SubscribeCallback
+from lflbot.bot.screens import show_screen
 from lflbot.bot.subscription_view import (
     HISTORY_LIMIT,
-    CheckPaymentCallback,
-    SubscribeCallback,
+    menu_only_keyboard,
     offer_text,
     payment_keyboard,
+    subscription_keyboard,
     subscription_text,
 )
 from lflbot.config import Settings
@@ -28,26 +31,21 @@ logger = logging.getLogger(__name__)
 router = Router(name="subscription")
 
 
-async def send_offer(
-    message: Message,
-    user_id: int,
-    session: AsyncSession,
-    payments: PaymentService,
-    settings: Settings,
-) -> None:
+async def offer_screen(
+    user_id: int, session: AsyncSession, payments: PaymentService, settings: Settings
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран со ссылкой на оплату или объяснение, почему её нет."""
     if not payments.enabled:
-        await message.answer(texts.PAYMENTS_DISABLED)
-        return
+        return texts.PAYMENTS_DISABLED, menu_only_keyboard()
     try:
         payment = await payments.checkout(session, user_id)
     except YooKassaError:
         logger.exception("Не удалось создать платёж для %s", user_id)
-        await message.answer(texts.PAYMENT_CREATE_FAILED)
-        return
+        return texts.PAYMENT_CREATE_FAILED, menu_only_keyboard()
     user = await session.get(User, user_id)
     ends_at = user.subscription_ends_at if user else None
     text = offer_text(payment.amount, payment.days, ends_at, utcnow(), settings.tz)
-    await message.answer(text, reply_markup=payment_keyboard(payment))
+    return text, payment_keyboard(payment)
 
 
 @router.message(Command("subscribe"))
@@ -55,16 +53,23 @@ async def cmd_subscribe(
     message: Message, session: AsyncSession, payments: PaymentService, settings: Settings
 ) -> None:
     if message.from_user is not None:
-        await send_offer(message, message.from_user.id, session, payments, settings)
+        text, markup = await offer_screen(message.from_user.id, session, payments, settings)
+        await message.answer(text, reply_markup=markup)
 
 
 @router.callback_query(SubscribeCallback.filter())
 async def on_subscribe(
-    callback: CallbackQuery, session: AsyncSession, payments: PaymentService, settings: Settings
+    callback: CallbackQuery,
+    session: AsyncSession,
+    payments: PaymentService,
+    settings: Settings,
+    state: FSMContext,
 ) -> None:
+    await state.clear()
     await callback.answer()
     if isinstance(callback.message, Message):
-        await send_offer(callback.message, callback.from_user.id, session, payments, settings)
+        text, markup = await offer_screen(callback.from_user.id, session, payments, settings)
+        await show_screen(callback.message, text, markup)
 
 
 @router.callback_query(CheckPaymentCallback.filter())
@@ -104,17 +109,17 @@ async def on_check_payment(
 async def _mark_paid(callback: CallbackQuery) -> None:
     """Убирает кнопки оплаты, чтобы по ссылке не заплатили второй раз."""
     message = callback.message
-    if isinstance(message, Message) and message.reply_markup is not None:
-        await message.edit_text(
-            (message.html_text or "") + texts.PAYMENT_DONE_MARK, reply_markup=None
-        )
-
-
-@router.message(Command("subscription"))
-async def cmd_subscription(message: Message, session: AsyncSession, settings: Settings) -> None:
-    if message.from_user is None:
+    if not isinstance(message, Message) or message.reply_markup is None:
         return
-    user_id = message.from_user.id
+    text = message.html_text or ""
+    if not text.endswith(texts.PAYMENT_DONE_MARK):
+        text += texts.PAYMENT_DONE_MARK
+    await show_screen(message, text, menu_only_keyboard())
+
+
+async def subscription_screen(
+    user_id: int, session: AsyncSession, settings: Settings
+) -> tuple[str, InlineKeyboardMarkup]:
     user = await session.get(User, user_id)
     paid = await session.scalars(
         select(Payment)
@@ -123,4 +128,25 @@ async def cmd_subscription(message: Message, session: AsyncSession, settings: Se
         .limit(HISTORY_LIMIT)
     )
     ends_at = user.subscription_ends_at if user else None
-    await message.answer(subscription_text(ends_at, list(paid), utcnow(), settings.tz))
+    now = utcnow()
+    price, days = settings.subscription_price, settings.subscription_days
+    text = subscription_text(ends_at, list(paid), now, settings.tz, price, days)
+    return text, subscription_keyboard(ends_at, days, now, price)
+
+
+@router.message(Command("subscription"))
+async def cmd_subscription(message: Message, session: AsyncSession, settings: Settings) -> None:
+    if message.from_user is not None:
+        text, markup = await subscription_screen(message.from_user.id, session, settings)
+        await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(NavCallback.filter(F.to == "subscription"))
+async def on_subscription_button(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings, state: FSMContext
+) -> None:
+    await state.clear()
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        text, markup = await subscription_screen(callback.from_user.id, session, settings)
+        await show_screen(callback.message, text, markup)

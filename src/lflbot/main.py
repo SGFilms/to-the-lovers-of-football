@@ -7,15 +7,16 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiohttp import web
 
-from lflbot.bot import BOT_COMMANDS, create_dispatcher
+from lflbot.bot import create_dispatcher
 from lflbot.bot.notify import Notifier
+from lflbot.bot.profile import apply_profile
 from lflbot.config import Settings
 from lflbot.db import create_engine, create_session_factory
 from lflbot.lfl import LflClient
 from lflbot.payments import PaymentService, YooKassaClient
 from lflbot.payments.webhook import setup_webhook
 from lflbot.reminders import send_due_reminders
-from lflbot.web import create_web_app
+from lflbot.web import create_web_app, legal_pages
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ async def main() -> None:
     dp["lfl"] = lfl
     dp["payments"] = payments
 
-    app = create_web_app(engine)
+    app = create_web_app(engine, legal_pages(settings))
     if payments.enabled:
         setup_webhook(app, payments, check_ip=settings.yookassa_check_ip)
     runner = web.AppRunner(app)
@@ -94,7 +95,7 @@ async def main() -> None:
     ]
 
     try:
-        await bot.set_my_commands(BOT_COMMANDS)
+        await apply_profile(bot, settings)
         await bot.delete_webhook(drop_pending_updates=False)
         logger.info("Бот @%s запущен", me.username)
         await dp.start_polling(bot)

@@ -4,7 +4,11 @@ from datetime import datetime, tzinfo
 from html import escape
 from urllib.parse import quote
 
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from lflbot.bot import texts
+from lflbot.bot.callbacks import ScheduleCallback, nav
 from lflbot.lfl import Club, ClubSchedule, Match
 from lflbot.schedule import kickoff_is_known, match_timezone, upcoming_matches
 
@@ -15,6 +19,8 @@ MONTHS = [
 ]  # fmt: skip
 
 MATCHES_TO_SHOW = 3
+# Сколько одноимённых команд предлагать на выбор.
+MAX_CHOICES = 10
 
 
 def club_label(club: Club) -> str:
@@ -55,3 +61,28 @@ def format_schedule(schedule: ClubSchedule, now: datetime, default_tz: tzinfo) -
         team=escape(club.name), league=escape(club.league or club.region or "")
     ).rstrip()
     return "\n\n".join([header, *(format_match(m, default_tz) for m in matches)])
+
+
+def clubs_keyboard(clubs: list[Club]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for club in clubs:
+        builder.button(text=club_label(club), callback_data=ScheduleCallback(club_id=club.id))
+    builder.button(text=texts.MENU_BUTTON, callback_data=nav("menu"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def schedule_keyboard(club_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=texts.REFRESH_BUTTON, callback_data=ScheduleCallback(club_id=club_id))
+    builder.button(text=texts.OTHER_TEAM_BUTTON, callback_data=nav("schedule"))
+    builder.button(text=texts.MENU_BUTTON, callback_data=nav("menu"))
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def search_keyboard() -> InlineKeyboardMarkup:
+    """Под подсказкой «напишите название» и под «не найдено»."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text=texts.MENU_BUTTON, callback_data=nav("menu"))
+    return builder.as_markup()
