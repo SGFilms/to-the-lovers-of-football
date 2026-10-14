@@ -65,8 +65,8 @@ OnSuccess = Callable[[Page], Awaitable[None]]
 
 
 class TtlCache:
-    """Кэш в памяти. Запись свежая ttl секунд; потом ещё stale_ttl секунд её можно отдать,
-    если сайт недоступен. Ошибки не кэшируются."""
+    """Кэш в памяти. Запись свежая ttl секунд (у записи может быть свой срок); потом ещё
+    stale_ttl секунд её можно отдать, если сайт недоступен. Ошибки не кэшируются."""
 
     def __init__(
         self, ttl: float, stale_ttl: float = 0, clock: Callable[[], float] = time.monotonic
@@ -74,25 +74,31 @@ class TtlCache:
         self.ttl = ttl
         self.stale_ttl = stale_ttl
         self._clock = clock
-        self._items: dict[str, tuple[float, Any]] = {}
+        # ключ → (когда сохранено, сколько свежая, значение)
+        self._items: dict[str, tuple[float, float, Any]] = {}
 
     def get(self, key: str, *, allow_stale: bool = False) -> Any | None:
         item = self._items.get(key)
         if item is None:
             return None
-        stored_at, value = item
+        stored_at, ttl, value = item
         age = self._clock() - stored_at
-        if age < self.ttl or (allow_stale and age < self.ttl + self.stale_ttl):
+        if age < ttl or (allow_stale and age < ttl + self.stale_ttl):
             return value
         return None
 
-    def set(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: Any, ttl: float | None = None) -> None:
         self._prune()
-        self._items[key] = (self._clock(), value)
+        self._items[key] = (self._clock(), self.ttl if ttl is None else ttl, value)
 
     def _prune(self) -> None:
-        oldest = self._clock() - self.ttl - self.stale_ttl
-        for key in [k for k, (stored_at, _) in self._items.items() if stored_at <= oldest]:
+        now = self._clock()
+        expired = [
+            key
+            for key, (stored_at, ttl, _) in self._items.items()
+            if stored_at + ttl + self.stale_ttl <= now
+        ]
+        for key in expired:
             del self._items[key]
 
 
@@ -162,14 +168,26 @@ class LflClient:
         )
 
     async def club_schedule(self, club_id: int) -> ClubSchedule:
-        return await self._cached(
-            f"calendar:{club_id}",
-            lambda: self._fetch(
-                "calendar",
-                f"/matches-calendar/{club_id}",
-                {"order": "asc", "currentDate": "upcoming"},
-                parse_calendar,
-            ),
+        return await self._cached(f"calendar:{club_id}", lambda: self._load_schedule(club_id))
+
+    @property
+    def paused(self) -> bool:
+        """После сбоя бот какое-то время не обращается к сайту."""
+        return self._clock() < self._paused_until
+
+    async def refresh_schedule(self, club_id: int, ttl: float) -> ClubSchedule:
+        """Заново загружает расписание клуба, даже если в кэше есть свежее, и хранит его
+        ttl секунд. Для фонового обновления расписаний избранных команд."""
+        schedule = await self._load_schedule(club_id)
+        self._cache.set(f"calendar:{club_id}", schedule, ttl)
+        return schedule
+
+    async def _load_schedule(self, club_id: int) -> ClubSchedule:
+        return await self._fetch(
+            "calendar",
+            f"/matches-calendar/{club_id}",
+            {"order": "asc", "currentDate": "upcoming"},
+            parse_calendar,
         )
 
     async def _cached(self, key: str, load: Callable[[], Awaitable[Any]]) -> Any:
@@ -248,7 +266,7 @@ class LflClient:
             logger.exception("Не удалось сообщить о состоянии сайта ЛФЛ")
 
     async def _get_html(self, path: str, params: dict[str, str]) -> str:
-        if self._clock() < self._paused_until:
+        if self.paused:
             raise _PausedError("запросы к сайту на паузе после сбоя")
 
         last_error: Exception | None = None

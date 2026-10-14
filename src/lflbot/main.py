@@ -19,6 +19,7 @@ from lflbot.monitoring import Alerts
 from lflbot.payments import PaymentService, YooKassaClient
 from lflbot.payments.webhook import setup_webhook
 from lflbot.reminders import send_due_reminders
+from lflbot.warmup import ScheduleWarmer
 from lflbot.web import create_web_app, legal_pages
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,18 @@ async def main() -> None:
             run_periodically("напоминания", REMINDER_INTERVAL, reminders_job, alerts.job_failed)
         ),
     ]
+    if settings.lfl_warmup_interval > 0:
+        warmer = ScheduleWarmer(session_factory, lfl)
+        tasks.append(
+            asyncio.create_task(
+                run_periodically(
+                    "обновление расписаний избранных команд",
+                    settings.lfl_warmup_interval,
+                    warmer.run_once,
+                    alerts.job_failed,
+                )
+            )
+        )
 
     try:
         await apply_profile(bot, settings)

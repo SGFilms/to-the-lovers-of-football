@@ -236,3 +236,31 @@ async def test_broken_hook_does_not_break_requests(clock: FakeClock) -> None:
     client = make_client(site, clock, on_success=broken)
     schedule = await client.club_schedule(989)
     assert len(schedule.matches) == 2
+
+
+async def test_refreshed_schedule_is_served_longer(clock: FakeClock) -> None:
+    site = Site(ok(CALENDAR_989))
+    client = make_client(site, clock)
+
+    await client.club_schedule(989)
+    # Фоновое обновление идёт на сайт, даже если в кэше свежее расписание.
+    await client.refresh_schedule(989, ttl=3 * 60 * 60)
+    assert len(site.requests) == 2
+
+    # Обычная запись живёт 15 минут, обновлённая заранее — сколько ей задано.
+    clock.now += 2 * 60 * 60
+    await client.club_schedule(989)
+    assert len(site.requests) == 2
+    clock.now += 61 * 60
+    await client.club_schedule(989)
+    assert len(site.requests) == 3
+
+
+async def test_paused_flag(clock: FakeClock) -> None:
+    client = make_client(Site(RESET), clock, cooldown=300)
+    assert not client.paused
+    with pytest.raises(LflUnavailableError):
+        await client.refresh_schedule(989, ttl=60)
+    assert client.paused
+    clock.now += 300
+    assert not client.paused

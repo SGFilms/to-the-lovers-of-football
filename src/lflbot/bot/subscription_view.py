@@ -9,7 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from lflbot import subscription
 from lflbot.bot import texts
-from lflbot.bot.callbacks import CheckPaymentCallback, SubscribeCallback, nav
+from lflbot.bot.callbacks import CheckPaymentCallback, ScheduleCallback, SubscribeCallback, nav
 from lflbot.bot.schedule_view import tz_label
 from lflbot.db import Payment
 from lflbot.legal import format_amount
@@ -72,6 +72,18 @@ def renew_keyboard() -> InlineKeyboardMarkup:
 def menu_only_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=texts.MENU_BUTTON, callback_data=nav("menu"))
+    return builder.as_markup()
+
+
+def favorite_keyboard(club_id: int, club_name: str) -> InlineKeyboardMarkup:
+    """Расписание избранной команды одной кнопкой и возврат в меню."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=texts.FAVORITE_BUTTON.format(team=club_name),
+        callback_data=ScheduleCallback(club_id=club_id),
+    )
+    builder.button(text=texts.MENU_BUTTON, callback_data=nav("menu"))
+    builder.adjust(1)
     return builder.as_markup()
 
 
