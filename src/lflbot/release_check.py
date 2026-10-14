@@ -1,5 +1,5 @@
 """Проверка готовности к приёму оплат (/check): ключи ЮKassa, адрес сервера,
-уведомления ЮKassa, данные исполнителя в оферте и сайт ЛФЛ.
+уведомления ЮKassa, данные исполнителя в оферте, сайт ЛФЛ и резервные копии.
 
 Каждая проверка возвращает одну строку: всё в порядке, предупреждение или проблема."""
 
@@ -11,8 +11,9 @@ from enum import StrEnum
 
 import httpx
 
+from lflbot.backup import BackupService
 from lflbot.bot import texts
-from lflbot.bot.admin_view import lfl_state
+from lflbot.bot.admin_view import lfl_state, short
 from lflbot.bot.subscription_view import format_moment
 from lflbot.config import Settings
 from lflbot.lfl import LflHealth
@@ -114,11 +115,43 @@ def check_lfl(health: LflHealth, tz: tzinfo) -> Check:
     return Check(level, texts.CHECK_LFL.format(state=lfl_state(health, tz)))
 
 
+def check_backup(settings: Settings, backups: BackupService, tz: tzinfo) -> Check:
+    if not backups.enabled:
+        return Check(Level.WARN, texts.CHECK_BACKUP_OFF)
+    at = settings.backup_at
+    if at is None:
+        level, text = Level.WARN, texts.CHECK_BACKUP_MANUAL
+    else:
+        protection = (
+            texts.CHECK_BACKUP_ENCRYPTED
+            if settings.backup_password.get_secret_value()
+            else texts.CHECK_BACKUP_PLAIN
+        )
+        level = Level.OK
+        text = texts.CHECK_BACKUP_DAILY.format(
+            at=f"{at:%H:%M}", channels=", ".join(backups.senders), protection=protection
+        )
+    last = backups.last
+    if last is None:
+        text += texts.CHECK_BACKUP_NEVER
+    elif last.ok:
+        text += texts.CHECK_BACKUP_LAST_OK.format(at=format_moment(last.at, tz))
+    else:
+        level = Level.WARN
+        problems = [last.error] if last.error else []
+        problems += [f"{d.channel}: {d.error}" for d in last.deliveries if d.error]
+        text += texts.CHECK_BACKUP_LAST_FAILED.format(
+            at=format_moment(last.at, tz), error=short("; ".join(problems))
+        )
+    return Check(level, text)
+
+
 async def run_checks(
     settings: Settings,
     payments: PaymentService,
     lfl: LflHealth,
     fetch: FetchHealth = fetch_health,
+    backups: BackupService | None = None,
 ) -> tuple[list[Check], bool]:
     """Все проверки по порядку и признак, что подключён боевой магазин."""
     tz = settings.tz
@@ -129,6 +162,8 @@ async def run_checks(
     if webhook is not None:
         checks.append(webhook)
     checks += [check_seller(settings, live), check_lfl(lfl, tz)]
+    if backups is not None:
+        checks.append(check_backup(settings, backups, tz))
     return checks, live
 
 

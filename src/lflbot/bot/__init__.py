@@ -21,6 +21,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="grant", description="Выдать дни: /grant ID дни"),
     BotCommand(command="payment", description="Проверить платёж: /payment номер"),
     BotCommand(command="check", description="Готов ли бот принимать оплаты"),
+    BotCommand(command="backup", description="Копия базы прямо сейчас"),
 ]
 
 

@@ -17,6 +17,7 @@ from lflbot.admin import (
     grant_days,
     user_card,
 )
+from lflbot.backup import BackupService
 from lflbot.bot import texts
 from lflbot.bot.admin_view import (
     payment_card_text,
@@ -25,6 +26,7 @@ from lflbot.bot.admin_view import (
     user_card_text,
     yookassa_state,
 )
+from lflbot.bot.backup_view import report_text
 from lflbot.bot.filters import IsAdmin
 from lflbot.bot.notify import Notifier
 from lflbot.config import Settings
@@ -169,7 +171,21 @@ async def cmd_payment(
 
 @router.message(Command("check"))
 async def cmd_check(
-    message: Message, settings: Settings, lfl: LflClient, payments: PaymentService
+    message: Message,
+    settings: Settings,
+    lfl: LflClient,
+    payments: PaymentService,
+    backups: BackupService,
 ) -> None:
-    checks, live = await run_checks(settings, payments, lfl.health)
+    checks, live = await run_checks(settings, payments, lfl.health, backups=backups)
     await message.answer(checks_text(checks, live, utcnow(), settings.tz))
+
+
+@router.message(Command("backup"))
+async def cmd_backup(message: Message, backups: BackupService) -> None:
+    if not backups.enabled:
+        await message.answer(texts.BACKUP_NOWHERE)
+        return
+    await message.answer(texts.BACKUP_STARTED)
+    result = await backups.run()
+    await message.answer(report_text(result))

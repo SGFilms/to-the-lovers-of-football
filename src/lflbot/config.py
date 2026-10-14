@@ -1,5 +1,6 @@
 """Настройки бота. Все значения берутся из переменных окружения или файла .env."""
 
+from datetime import time
 from decimal import Decimal
 from functools import cached_property
 from typing import Annotated
@@ -72,6 +73,21 @@ class Settings(DatabaseSettings):
     # подписчиков. 0 — не обновлять заранее.
     lfl_warmup_interval: int = 60
 
+    # Резервная копия базы уходит с сервера каждый день в это время (ЧЧ:ММ, в часовом поясе
+    # DISPLAY_TIMEZONE). Пусто — только по команде /backup.
+    backup_time: str = "04:00"
+    # Присылать копию администраторам в Telegram файлом.
+    backup_telegram: bool = True
+    # Пароль шифрования копии. Пусто — копия не шифруется.
+    backup_password: SecretStr = SecretStr("")
+    # Почта для копий. Пусто — на почту не отправлять. Письмо уходит через SMTP-сервер
+    # почтового ящика SMTP_USER (например, smtp.yandex.ru, порт 465, пароль приложения).
+    backup_email: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: SecretStr = SecretStr("")
+
     # Часовой пояс, в котором пользователю показываются даты и время.
     display_timezone: str = "Europe/Moscow"
 
@@ -94,6 +110,21 @@ class Settings(DatabaseSettings):
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError(f"Неизвестный часовой пояс: {value}") from exc
         return value
+
+    @field_validator("backup_time")
+    @classmethod
+    def _check_backup_time(cls, value: str) -> str:
+        value = value.strip()
+        if value:
+            try:
+                time.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError(f"BACKUP_TIME нужен в виде ЧЧ:ММ: {value}") from exc
+        return value
+
+    @property
+    def backup_at(self) -> time | None:
+        return time.fromisoformat(self.backup_time) if self.backup_time else None
 
     @property
     def payments_enabled(self) -> bool:

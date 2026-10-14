@@ -1,14 +1,17 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import time, tzinfo
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiohttp import web
 
+from lflbot.backup import next_run
 from lflbot.bot import create_dispatcher
 from lflbot.bot.alerts import BotAlerts
+from lflbot.bot.backup_view import create_backup_service
 from lflbot.bot.notify import Notifier
 from lflbot.bot.profile import apply_profile
 from lflbot.config import Settings
@@ -42,6 +45,28 @@ async def run_periodically(
             if on_error is not None:
                 await on_error(name, exc)
         await asyncio.sleep(interval)
+
+
+async def run_daily(
+    name: str,
+    at: time,
+    tz: tzinfo,
+    job: Callable[[], Awaitable[object]],
+    on_error: Callable[[str, Exception], Awaitable[None]] | None = None,
+):
+    """Запускает job каждый день, когда по часам tz наступает время at."""
+    moment = next_run(utcnow(), at, tz)
+    while True:
+        await asyncio.sleep(max(0.0, (moment - utcnow()).total_seconds()))
+        try:
+            await job()
+        except Exception as exc:
+            logger.exception("Фоновая задача «%s» завершилась с ошибкой", name)
+            if on_error is not None:
+                await on_error(name, exc)
+        # От moment, а не от текущего времени: если sleep проснулся чуть раньше,
+        # задача не запустится второй раз в тот же день.
+        moment = next_run(max(utcnow(), moment), at, tz)
 
 
 async def main() -> None:
@@ -87,6 +112,8 @@ async def main() -> None:
     dp["payments"] = payments
     dp["notifier"] = notifier
     dp["started_at"] = utcnow()
+    backups = create_backup_service(settings, session_factory, notifier, utcnow)
+    dp["backups"] = backups
 
     app = create_web_app(engine, legal_pages(settings))
     if payments.enabled:
@@ -121,6 +148,18 @@ async def main() -> None:
                     "обновление расписаний избранных команд",
                     settings.lfl_warmup_interval,
                     warmer.run_once,
+                    alerts.job_failed,
+                )
+            )
+        )
+    if settings.backup_at is not None:
+        tasks.append(
+            asyncio.create_task(
+                run_daily(
+                    "резервная копия",
+                    settings.backup_at,
+                    settings.tz,
+                    backups.scheduled,
                     alerts.job_failed,
                 )
             )
