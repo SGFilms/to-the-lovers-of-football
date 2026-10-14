@@ -179,3 +179,60 @@ async def test_rate_limiter_spaces_requests(clock: FakeClock) -> None:
     await client.club_schedule(3)
 
     assert loop.time() - started >= 0.1
+
+
+class Hooks:
+    def __init__(self) -> None:
+        self.failures: list = []
+        self.successes: list = []
+
+    async def on_failure(self, failure) -> None:
+        self.failures.append(failure)
+
+    async def on_success(self, page) -> None:
+        self.successes.append(page)
+
+
+async def test_failures_and_recovery_are_reported(clock: FakeClock) -> None:
+    hooks = Hooks()
+    site = Site(RESET, RESET, ok(CALENDAR_989))
+    client = make_client(
+        site, clock, cooldown=300, on_failure=hooks.on_failure, on_success=hooks.on_success
+    )
+
+    with pytest.raises(LflUnavailableError):
+        await client.club_schedule(989)
+    [failure] = hooks.failures
+    assert (failure.page, failure.kind) == ("calendar", "unavailable")
+    assert client.health.failing
+
+    # Пока запросы на паузе, сайт не трогаем и о новом сбое не сообщаем.
+    with pytest.raises(LflUnavailableError):
+        await client.club_schedule(989)
+    assert len(hooks.failures) == 1
+
+    clock.now += 301
+    await client.club_schedule(989)
+    assert hooks.successes == ["calendar"]
+    assert not client.health.failing
+    assert client.health.last_ok_at is not None
+
+
+async def test_changed_layout_is_reported(clock: FakeClock) -> None:
+    hooks = Hooks()
+    site = Site(ok("<html>новый сайт</html>"))
+    client = make_client(site, clock, on_failure=hooks.on_failure)
+    with pytest.raises(LflUnavailableError):
+        await client.search_clubs("Спартак")
+    [failure] = hooks.failures
+    assert (failure.page, failure.kind) == ("search", "layout")
+
+
+async def test_broken_hook_does_not_break_requests(clock: FakeClock) -> None:
+    async def broken(page) -> None:
+        raise RuntimeError("Telegram недоступен")
+
+    site = Site(ok(CALENDAR_989))
+    client = make_client(site, clock, on_success=broken)
+    schedule = await client.club_schedule(989)
+    assert len(schedule.matches) == 2

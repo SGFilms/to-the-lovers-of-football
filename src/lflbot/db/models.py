@@ -60,3 +60,20 @@ class Payment(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Когда дни сняты из-за возврата денег.
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SubscriptionGrant(Base):
+    """Дни подписки, которые администратор добавил или снял вручную, без оплаты.
+    Нужны, чтобы по карточке пользователя было видно, откуда у него доступ."""
+
+    __tablename__ = "subscription_grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.telegram_id"), index=True)
+    # Сколько дней добавлено; отрицательное число — сколько снято.
+    days: Mapped[int] = mapped_column(SmallInteger)
+    # Telegram ID администратора, который выдал дни.
+    admin_id: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Дата окончания подписки сразу после изменения.
+    subscription_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

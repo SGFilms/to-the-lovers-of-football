@@ -13,6 +13,15 @@ BOT_COMMANDS = [
     BotCommand(command="help", description="Помощь, отзыв, оферта"),
 ]
 
+# Видны в меню команд только у администраторов.
+ADMIN_COMMANDS = [
+    BotCommand(command="admin", description="Команды администратора"),
+    BotCommand(command="stats", description="Статистика и состояние бота"),
+    BotCommand(command="user", description="Карточка пользователя: /user ID"),
+    BotCommand(command="grant", description="Выдать дни: /grant ID дни"),
+    BotCommand(command="payment", description="Проверить платёж: /payment номер"),
+]
+
 
 def create_dispatcher(session_factory: async_sessionmaker[AsyncSession]) -> Dispatcher:
     dp = Dispatcher()

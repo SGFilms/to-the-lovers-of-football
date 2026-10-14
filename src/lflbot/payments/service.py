@@ -217,7 +217,10 @@ class PaymentService:
 
     async def sync_pending(self) -> None:
         """Сверка неоплаченных платежей: на случай, если уведомление не дошло, бот
-        перезапускался или работает на компьютере без HTTPS-адреса."""
+        перезапускался или работает на компьютере без HTTPS-адреса.
+
+        Ошибка отдельного платежа не мешает проверить остальные. Если не удалось
+        проверить ни один, исключение передаётся вызывающему."""
         if self._yookassa is None:
             return
         async with self._session_factory() as session:
@@ -231,8 +234,16 @@ class PaymentService:
                     .order_by(Payment.created_at)
                 )
             )
+        last_error: Exception | None = None
+        failed = 0
         for payment_id in ids:
             try:
                 await self.sync(payment_id)
-            except Exception:
+            except Exception as exc:
                 logger.exception("Сверка платежа %s не удалась", payment_id)
+                last_error = exc
+                failed += 1
+        # Не удалось проверить ни одного платежа: скорее всего, ЮKassa недоступна или
+        # ключи неверны. Ошибка наружу — чтобы о ней узнали администраторы.
+        if last_error is not None and failed == len(ids):
+            raise last_error

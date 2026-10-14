@@ -159,3 +159,116 @@ ADMIN_REFUNDED = (
     "Платёж ЮKassa: <code>{payment_id}</code> (Telegram ID <code>{user_id}</code>)\n\n"
     "Аннулируйте чек по этой оплате в «Мой налог»."
 )
+
+# Админка: команды видны и работают только у Telegram ID из ADMIN_IDS.
+ADMIN_HELP = (
+    "🛠 <b>Команды администратора</b>\n\n"
+    "/stats — статистика и состояние бота\n"
+    "/user <i>ID</i> — карточка пользователя\n"
+    "/grant <i>ID</i> <i>дни</i> — добавить дни подписки, "
+    "например <code>/grant 123456 30</code>\n"
+    "/grant <i>ID</i> -<i>дни</i> — снять дни, например <code>/grant 123456 -5</code>\n"
+    "/payment <i>номер</i> — платёж ЮKassa, заново проверяет его статус\n\n"
+    "Telegram ID пользователя есть в уведомлениях об оплатах и отзывах."
+)
+ADMIN_STATS = (
+    "📊 <b>Статистика</b> · {now}\n\n"
+    "👥 Пользователей: <b>{users}</b> (+{users_day} за сутки, +{users_week} за 7 дней)\n"
+    "✅ Активных подписок: <b>{subscribers}</b>\n"
+    "🎁 Потратили бесплатный пример: {previews_used}\n\n"
+    "💰 Оплат за 30 дней: <b>{paid_month}</b> на {paid_month_sum} ₽\n"
+    "💰 Оплат за всё время: {paid_total} на {paid_total_sum} ₽\n"
+    "↩️ Возвратов за 30 дней: {refunds_month}\n"
+    "⏳ Неоплаченных ссылок за сутки: {pending_day}\n\n"
+    "<b>Состояние</b>\n"
+    "🌐 Сайт ЛФЛ: {lfl}\n"
+    "💳 ЮKassa: {yookassa}\n"
+    "⏱ Бот запущен {started_at}"
+)
+ADMIN_LFL_NEVER = "запросов ещё не было"
+ADMIN_LFL_OK = "✅ отвечает, последний ответ {at}"
+ADMIN_LFL_FAILING = "⚠️ {failure} ({at})"
+ADMIN_YOOKASSA_OFF = "не подключена"
+ADMIN_YOOKASSA_TEST = "тестовый магазин"
+ADMIN_YOOKASSA_LIVE = "боевой магазин"
+
+ADMIN_BAD_USER_ID = "Укажите Telegram ID числом, например <code>/user 123456</code>."
+ADMIN_USER_NOT_FOUND = (
+    "Пользователя <code>{user_id}</code> нет в базе: он ещё не писал боту. "
+    "Дни ему всё равно можно выдать командой /grant."
+)
+ADMIN_USER_CARD = (
+    "👤 <b>Пользователь</b> <code>{user_id}</code>\n\n"
+    "Первый раз написал: {created_at}\n"
+    "Подписка: {subscription}\n"
+    "Бесплатный пример: {preview}\n"
+    "Избранная команда: {favorite}"
+)
+ADMIN_SUB_ACTIVE = "✅ до {ends_at}"
+ADMIN_SUB_ENDED = "закончилась {ends_at}"
+ADMIN_SUB_NONE = "не было"
+ADMIN_PREVIEW_USED = "потрачен {at}"
+ADMIN_PREVIEW_FREE = "не потрачен"
+ADMIN_NO_FAVORITE = "нет"
+ADMIN_CARD_PAYMENTS = "\n\n<b>Платежи</b>\n{lines}"
+ADMIN_CARD_PAYMENT = "{date} · {amount} ₽ · {status} · <code>{payment_id}</code>"
+ADMIN_CARD_GRANTS = "\n\n<b>Выдано вручную</b>\n{lines}"
+ADMIN_CARD_GRANT = "{date} · {days:+d} дн. (админ <code>{admin_id}</code>)"
+
+PAYMENT_STATUS_PAID = "оплачен"
+PAYMENT_STATUS_REFUNDED = "возвращён"
+PAYMENT_STATUS_CANCELED = "отменён"
+PAYMENT_STATUS_PENDING = "не оплачен"
+
+ADMIN_GRANT_USAGE = (
+    "Формат: <code>/grant ID дни</code>, например <code>/grant 123456 30</code>. "
+    "Чтобы снять дни, укажите их со знаком минус: <code>/grant 123456 -5</code>. "
+    "За раз не больше {max_days} дней."
+)
+ADMIN_GRANTED = "✅ Пользователю <code>{user_id}</code> добавлено {days} дн. Подписка до {ends_at}."
+ADMIN_TAKEN = "✅ У пользователя <code>{user_id}</code> снято {days} дн. Подписка: {subscription}."
+ADMIN_NOTHING_TO_TAKE = (
+    "У пользователя <code>{user_id}</code> нет активной подписки, снимать нечего."
+)
+ADMIN_USER_NOTIFIED = "\nПользователь получил сообщение об этом."
+ADMIN_USER_NOT_NOTIFIED = (
+    "\nНаписать пользователю не удалось: он ещё не открывал бота или заблокировал его."
+)
+# Пользователю, которому администратор добавил дни.
+GRANTED = "🎁 Вам добавлено {days} дн. подписки. Подписка активна до <b>{ends_at}</b>."
+
+ADMIN_PAYMENT_USAGE = "Укажите номер платежа ЮKassa: <code>/payment номер</code>."
+ADMIN_PAYMENT_NOT_FOUND = "Платежа <code>{payment_id}</code> нет в базе бота."
+ADMIN_PAYMENT_CARD = (
+    "💳 <b>Платёж</b> <code>{payment_id}</code>\n\n"
+    "Пользователь: <code>{user_id}</code> (/user {user_id})\n"
+    "Сумма: {amount} ₽ за {days} дн.\n"
+    "Статус: {status}\n"
+    "Создан: {created_at}"
+)
+ADMIN_PAYMENT_PAID_AT = "\nЗасчитан: {at}"
+ADMIN_PAYMENT_REFUNDED_AT = "\nВозвращён: {at}"
+ADMIN_PAYMENT_SYNCED = "\n\n🔄 Статус проверен в ЮKassa только что."
+ADMIN_PAYMENT_SYNC_FAILED = "\n\n⚠️ ЮKassa не ответила, показан статус из базы."
+ADMIN_PAYMENT_SYNC_OFF = "\n\nЮKassa не подключена, показан статус из базы."
+
+# Сообщения о сбоях.
+ALERT_LFL_UNAVAILABLE = (
+    "⚠️ <b>Сайт ЛФЛ не отвечает</b> ({page})\n<code>{detail}</code>\n\n"
+    "Пользователи видят «сайт не отвечает» или сохранённое ранее расписание. "
+    "Бот сам попробует снова через несколько минут."
+)
+ALERT_LFL_LAYOUT = (
+    "🚨 <b>Сайт ЛФЛ изменился</b> ({page}): бот не может разобрать страницу.\n"
+    "<code>{detail}</code>\n\n"
+    "Пока парсер не обновят, расписание не показывается. Нужен разработчик."
+)
+ALERT_LFL_RECOVERED = "✅ Сайт ЛФЛ снова отвечает ({page})."
+ALERT_LFL_PAGES = {"search": "поиск команды", "calendar": "календарь матчей"}
+ALERT_ERROR = (
+    "🚨 <b>Ошибка в боте</b> при {where}\n<code>{error}</code>\n\nПодробности в логах бота."
+)
+ALERT_ERROR_UPDATE = "обработке сообщения"
+ALERT_ERROR_JOB = "фоновой задаче «{name}»"
+ALERT_LFL_UNAVAILABLE_SHORT = "не отвечает"
+ALERT_LFL_LAYOUT_SHORT = "изменилась вёрстка, расписание не разбирается"
