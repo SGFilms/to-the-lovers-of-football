@@ -177,7 +177,8 @@ ADMIN_HELP = (
     "например <code>/grant 123456 30</code>\n"
     "/grant <i>ID</i> -<i>дни</i> — снять дни, например <code>/grant 123456 -5</code>\n"
     "/payment <i>номер</i> — платёж ЮKassa, заново проверяет его статус\n"
-    "/check — готов ли бот принимать оплаты: ключи ЮKassa, адрес сервера, оферта\n\n"
+    "/check — готов ли бот принимать оплаты: ключи ЮKassa, адрес сервера, оферта\n"
+    "/backup — сделать копию базы и отправить её сейчас\n\n"
     "Telegram ID пользователя есть в уведомлениях об оплатах и отзывах."
 )
 ADMIN_STATS = (
@@ -239,6 +240,17 @@ CHECK_WEBHOOK_OK = "<b>Уведомления ЮKassa</b>: приходят, п�
 CHECK_SELLER_MISSING = "<b>Оферта</b>: не заполнено {fields} в .env, в оферте стоит «не указано»."
 CHECK_SELLER_OK = "<b>Оферта</b>: данные исполнителя заполнены."
 CHECK_LFL = "<b>Сайт ЛФЛ</b>: {state}"
+CHECK_BACKUP_OFF = (
+    "<b>Копии базы</b>: никуда не отправляются. Включите BACKUP_TELEGRAM или задайте "
+    "BACKUP_EMAIL в .env, иначе при поломке сервера база пропадёт."
+)
+CHECK_BACKUP_MANUAL = "<b>Копии базы</b>: BACKUP_TIME пуст, копии только по команде /backup."
+CHECK_BACKUP_DAILY = "<b>Копии базы</b>: каждый день в {at} — {channels}, {protection}."
+CHECK_BACKUP_ENCRYPTED = "зашифрованы"
+CHECK_BACKUP_PLAIN = "без шифрования"
+CHECK_BACKUP_LAST_OK = " Последняя {at} дошла."
+CHECK_BACKUP_LAST_FAILED = " Последняя {at} не дошла: {error}. Проверьте командой /backup."
+CHECK_BACKUP_NEVER = " С запуска бота ещё не делались, проверить можно командой /backup."
 CHECK_VERDICT_FAIL = "❌ <b>Есть проблемы.</b> Исправьте строки с ❌ и повторите /check."
 CHECK_VERDICT_TEST = (
     "🧪 <b>Подключён тестовый магазин.</b> Проверьте оплату тестовой картой, "
@@ -246,6 +258,33 @@ CHECK_VERDICT_TEST = (
 )
 CHECK_VERDICT_WARN = "⚠️ <b>Боевой магазин подключён</b>, но проверьте строки с ⚠️."
 CHECK_VERDICT_OK = "✅ <b>Бот готов принимать оплаты.</b>"
+
+BACKUP_TELEGRAM = "Telegram"
+BACKUP_EMAIL = "почта {email}"
+BACKUP_CAPTION = (
+    "💾 <b>Копия базы</b> · {at}\n"
+    "Пользователей: {users}, платежей: {payments}. {protection}\n\n"
+    "Сохраните файл у себя. Как восстановить базу — в README, раздел «Резервные копии»."
+)
+BACKUP_CAPTION_ENCRYPTED = "🔒 Зашифрована паролем BACKUP_PASSWORD."
+BACKUP_CAPTION_PLAIN = "Не зашифрована: не пересылайте её никому."
+BACKUP_EMAIL_SUBJECT = "Копия базы бота ЛФЛ · {at}"
+BACKUP_EMAIL_BODY = (
+    "Копия базы бота от {at}.\n"
+    "Пользователей: {users}, платежей: {payments}. {protection}\n\n"
+    "Как восстановить базу — в README, раздел «Резервные копии».\n"
+)
+BACKUP_EMAIL_NOT_CONFIGURED = "не заданы {fields} в .env"
+BACKUP_TOO_BIG = "файл {size} больше допустимых {limit}"
+BACKUP_NO_ADMINS = "ADMIN_IDS пуст"
+BACKUP_NOWHERE = (
+    "Копия никуда не отправляется: в .env выключен BACKUP_TELEGRAM и не задан BACKUP_EMAIL."
+)
+BACKUP_STARTED = "⏳ Делаю копию базы…"
+BACKUP_FAILED = "❌ Копию сделать не удалось:\n<code>{error}</code>"
+BACKUP_REPORT = "💾 Копия базы {filename}, {size}:\n{lines}"
+BACKUP_DELIVERED = "✅ {channel}"
+BACKUP_NOT_DELIVERED = "❌ {channel}: {error}"
 
 ADMIN_BAD_USER_ID = "Укажите Telegram ID числом, например <code>/user 123456</code>."
 ADMIN_USER_NOT_FOUND = (

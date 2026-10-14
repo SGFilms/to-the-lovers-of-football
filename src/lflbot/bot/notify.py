@@ -7,8 +7,9 @@ from html import escape
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 
+from lflbot.backup import TELEGRAM_LIMIT, Backup, format_size
 from lflbot.bot import texts
 from lflbot.bot.subscription_view import (
     favorite_keyboard,
@@ -73,6 +74,27 @@ class Notifier:
         """Сообщает пользователю, что администратор добавил ему дни. False — не дошло."""
         text = texts.GRANTED.format(days=days, ends_at=format_moment(ends_at, self.settings.tz))
         return await self._send(user_id, text, markup=menu_only_keyboard())
+
+    async def backup(self, backup: Backup, caption: str) -> str | None:
+        """Присылает копию базы файлом всем администраторам. Возвращает None, если она
+        дошла хотя бы до одного, иначе описание ошибки."""
+        if not self.settings.admin_ids:
+            return texts.BACKUP_NO_ADMINS
+        if len(backup.data) > TELEGRAM_LIMIT:
+            return texts.BACKUP_TOO_BIG.format(
+                size=format_size(len(backup.data)), limit=format_size(TELEGRAM_LIMIT)
+            )
+        errors = []
+        for admin_id in self.settings.admin_ids:
+            document = BufferedInputFile(backup.data, filename=backup.filename)
+            try:
+                await self.bot.send_document(admin_id, document, caption=caption)
+            except TelegramAPIError as exc:
+                logger.warning("Не удалось отправить копию базы %s: %s", admin_id, exc)
+                errors.append(f"{admin_id}: {exc}")
+        if len(errors) == len(self.settings.admin_ids):
+            return "; ".join(errors)
+        return None
 
     async def to_admins(self, text: str) -> None:
         for admin_id in self.settings.admin_ids:

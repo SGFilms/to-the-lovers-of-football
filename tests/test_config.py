@@ -1,3 +1,5 @@
+from datetime import time
+
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import make_url
@@ -14,6 +16,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DISPLAY_TIMEZONE",
         "YOOKASSA_SHOP_ID",
         "YOOKASSA_SECRET_KEY",
+        "BACKUP_TIME",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("BOT_TOKEN", "123:abc")
@@ -71,3 +74,14 @@ def test_payments_disabled_without_keys(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.payments_enabled
     assert str(settings.subscription_price) == "1.00"
     assert settings.subscription_days == 30
+
+
+def test_backup_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert make_settings().backup_at == time(4, 0)
+    monkeypatch.setenv("BACKUP_TIME", "23:30")
+    assert make_settings().backup_at == time(23, 30)
+    monkeypatch.setenv("BACKUP_TIME", "")
+    assert make_settings().backup_at is None
+    monkeypatch.setenv("BACKUP_TIME", "в четыре")
+    with pytest.raises(ValidationError):
+        make_settings()

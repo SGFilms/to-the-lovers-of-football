@@ -9,9 +9,11 @@ from aiogram.filters import CommandObject
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from lflbot.admin import MAX_GRANT_DAYS
+from lflbot.backup import Backup, BackupService
 from lflbot.bot import texts
 from lflbot.bot.admin_view import lfl_state, yookassa_state
 from lflbot.bot.handlers.admin import (
+    cmd_backup,
     cmd_check,
     cmd_grant,
     cmd_payment,
@@ -215,7 +217,30 @@ def test_admin_texts_are_valid_html(text: str) -> None:
 async def test_check_command() -> None:
     message = tg_message(ADMIN)
     payments = PaymentService(None, FakeYooKassa(), price=PRICE, days=30, description="x")  # type: ignore[arg-type]
-    await cmd_check(message, SETTINGS, SimpleNamespace(health=LflHealth()), payments)
+    backups = BackupService(AsyncMock(), {}, lambda: NOW)
+    await cmd_check(message, SETTINGS, SimpleNamespace(health=LflHealth()), payments, backups)
     text = answer(message)
     assert text.startswith("🔎 <b>Проверка перед приёмом оплат</b>")
+    assert texts.CHECK_BACKUP_OFF in text
     assert texts.CHECK_VERDICT_TEST in text
+
+
+async def test_backup_command() -> None:
+    async def make(now: datetime) -> Backup:
+        return Backup("lflbot-1.sql.gz", b"x", now, False, users=1, payments=0)
+
+    send = AsyncMock(return_value=None)
+    message = tg_message(ADMIN)
+    await cmd_backup(message, BackupService(make, {"Telegram": send}, lambda: NOW))
+
+    send.assert_awaited_once()
+    assert [m.html_text for m in message.sent] == [
+        texts.BACKUP_STARTED,
+        "💾 Копия базы lflbot-1.sql.gz, 1 КБ:\n✅ Telegram",
+    ]
+
+
+async def test_backup_command_without_channels() -> None:
+    message = tg_message(ADMIN)
+    await cmd_backup(message, BackupService(AsyncMock(), {}, lambda: NOW))
+    assert answer(message) == texts.BACKUP_NOWHERE
