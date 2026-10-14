@@ -3,6 +3,7 @@
 
 import logging
 from datetime import datetime
+from html import escape
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
@@ -10,6 +11,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from lflbot.bot import texts
 from lflbot.bot.subscription_view import (
+    favorite_keyboard,
     format_amount,
     format_moment,
     menu_only_keyboard,
@@ -33,8 +35,16 @@ class Notifier:
         tz = self.settings.tz
         ends_at = format_moment(change.subscription_ends_at, tz)
         amount = format_amount(change.amount)
+        markup = menu_only_keyboard()
         if change.kind == "paid":
             user_text = texts.PAID.format(ends_at=ends_at)
+            # Зная команду заранее, бот держит её расписание наготове (lflbot.warmup).
+            if change.favorite_club_id is not None and change.favorite_club_name:
+                team = change.favorite_club_name
+                user_text += texts.PAID_TEAM.format(team=escape(team))
+                markup = favorite_keyboard(change.favorite_club_id, team)
+            else:
+                user_text += texts.PAID_ASK_TEAM
             admin_text = texts.ADMIN_PAID.format(
                 amount=amount,
                 date=format_moment(change.at, tz),
@@ -50,7 +60,7 @@ class Notifier:
             admin_text = texts.ADMIN_REFUNDED.format(
                 amount=amount, user_id=change.user_id, payment_id=change.payment_id
             )
-        await self._send(change.user_id, user_text, markup=menu_only_keyboard())
+        await self._send(change.user_id, user_text, markup=markup)
         await self.to_admins(admin_text)
 
     async def reminder(self, reminder: Reminder) -> None:

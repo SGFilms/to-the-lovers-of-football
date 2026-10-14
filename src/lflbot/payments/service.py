@@ -46,6 +46,9 @@ class PaymentChange:
     days: int
     subscription_ends_at: datetime
     at: datetime
+    # Избранная команда пользователя: после оплаты бот напоминает о ней или просит выбрать.
+    favorite_club_id: int | None = None
+    favorite_club_name: str | None = None
 
 
 OnChange = Callable[[PaymentChange], Awaitable[None]]
@@ -125,6 +128,8 @@ def _change(
         days=payment.days,
         subscription_ends_at=user.subscription_ends_at,
         at=now,
+        favorite_club_id=user.favorite_club_id,
+        favorite_club_name=user.favorite_club_name,
     )
 
 

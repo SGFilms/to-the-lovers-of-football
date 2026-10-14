@@ -194,7 +194,9 @@ async def test_notifier_tells_user_and_admins_about_payment() -> None:
     await Notifier(bot, SETTINGS).payment_changed(paid_change())
 
     sent = {c.args[0]: c.args[1] for c in bot.send_message.await_args_list}
-    assert sent[USER] == texts.PAID.format(ends_at="13.11.2026, 12:05 МСК")
+    paid = texts.PAID.format(ends_at="13.11.2026, 12:05 МСК")
+    # Команды пользователь ещё не выбирал: бот просит написать её название.
+    assert sent[USER] == paid + texts.PAID_ASK_TEAM
     for admin in (1, 2):
         assert "1 ₽" in sent[admin]
         assert "14.10.2026, 12:05 МСК" in sent[admin]
@@ -225,3 +227,14 @@ async def test_notifier_reminder_has_renew_button() -> None:
     call = bot.send_message.await_args
     assert call.args == (USER, texts.REMINDER_3.format(ends_at="17.10.2026, 12:05 МСК"))
     assert call.kwargs["reply_markup"].inline_keyboard[0][0].text == texts.RENEW_BUTTON
+
+
+async def test_notifier_reminds_favorite_team_after_payment() -> None:
+    bot = AsyncMock()
+    change = paid_change(favorite_club_id=989, favorite_club_name="Монтана & Ко")
+
+    await Notifier(bot, SETTINGS).payment_changed(change)
+
+    call = bot.send_message.await_args_list[0]
+    assert call.args[1].endswith(texts.PAID_TEAM.format(team="Монтана &amp; Ко"))
+    assert button_texts(call.kwargs["reply_markup"]) == ["⭐ Монтана & Ко", texts.MENU_BUTTON]

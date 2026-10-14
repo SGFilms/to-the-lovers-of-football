@@ -297,3 +297,19 @@ async def test_payment_from_other_shop_is_forgotten(
         assert (forgotten.status, forgotten.confirmation_url) == ("canceled", None)
     new = await service.checkout(session, USER)
     assert new.id != old.id
+
+
+async def test_paid_change_carries_favorite_team(
+    service: PaymentService, session: AsyncSession, yookassa: FakeYooKassa
+) -> None:
+    payment = await service.checkout(session, USER)
+    user = await session.get(User, USER)
+    assert user is not None
+    user.favorite_club_id, user.favorite_club_name = 989, "Монтана"
+    await session.commit()
+    yookassa.pay(payment.id)
+
+    change = await service.sync(payment.id)
+
+    assert change is not None
+    assert (change.favorite_club_id, change.favorite_club_name) == (989, "Монтана")
