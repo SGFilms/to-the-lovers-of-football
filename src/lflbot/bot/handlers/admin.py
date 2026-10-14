@@ -32,6 +32,7 @@ from lflbot.db import Payment
 from lflbot.db.base import utcnow
 from lflbot.lfl import LflClient
 from lflbot.payments import PaymentService, YooKassaError
+from lflbot.release_check import checks_text, run_checks
 
 logger = logging.getLogger(__name__)
 
@@ -164,3 +165,11 @@ async def cmd_payment(
     payment = await session.get(Payment, payment_id, populate_existing=True)
     assert payment is not None
     await message.answer(payment_card_text(payment, settings.tz) + note)
+
+
+@router.message(Command("check"))
+async def cmd_check(
+    message: Message, settings: Settings, lfl: LflClient, payments: PaymentService
+) -> None:
+    checks, live = await run_checks(settings, payments, lfl.health)
+    await message.answer(checks_text(checks, live, utcnow(), settings.tz))

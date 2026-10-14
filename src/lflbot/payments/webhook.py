@@ -10,6 +10,7 @@ import re
 
 from aiohttp import web
 
+from lflbot.db.base import utcnow
 from lflbot.payments.service import PaymentService
 from lflbot.payments.yookassa import YooKassaError
 
@@ -86,6 +87,7 @@ async def yookassa_webhook(request: web.Request) -> web.Response:
         event = await request.json()
     except ValueError:
         return web.Response(status=400)
+    request.app[SERVICE_KEY].last_webhook_at = utcnow()
     payment_id = payment_id_of(event)
     if payment_id is None:
         logger.info("Уведомление ЮKassa без нужных данных пропущено: %s", str(event)[:300])

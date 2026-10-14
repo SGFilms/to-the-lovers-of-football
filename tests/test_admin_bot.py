@@ -12,6 +12,7 @@ from lflbot.admin import MAX_GRANT_DAYS
 from lflbot.bot import texts
 from lflbot.bot.admin_view import lfl_state, yookassa_state
 from lflbot.bot.handlers.admin import (
+    cmd_check,
     cmd_grant,
     cmd_payment,
     cmd_stats,
@@ -209,3 +210,12 @@ async def test_payment_command_rechecks_status(engine: AsyncEngine, session: Asy
 @pytest.mark.parametrize("text", [texts.ADMIN_HELP, texts.ADMIN_STATS])
 def test_admin_texts_are_valid_html(text: str) -> None:
     assert text.count("<b>") == text.count("</b>")
+
+
+async def test_check_command() -> None:
+    message = tg_message(ADMIN)
+    payments = PaymentService(None, FakeYooKassa(), price=PRICE, days=30, description="x")  # type: ignore[arg-type]
+    await cmd_check(message, SETTINGS, SimpleNamespace(health=LflHealth()), payments)
+    text = answer(message)
+    assert text.startswith("🔎 <b>Проверка перед приёмом оплат</b>")
+    assert texts.CHECK_VERDICT_TEST in text
