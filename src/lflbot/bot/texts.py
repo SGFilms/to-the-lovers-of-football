@@ -168,7 +168,8 @@ ADMIN_HELP = (
     "/grant <i>ID</i> <i>дни</i> — добавить дни подписки, "
     "например <code>/grant 123456 30</code>\n"
     "/grant <i>ID</i> -<i>дни</i> — снять дни, например <code>/grant 123456 -5</code>\n"
-    "/payment <i>номер</i> — платёж ЮKassa, заново проверяет его статус\n\n"
+    "/payment <i>номер</i> — платёж ЮKassa, заново проверяет его статус\n"
+    "/check — готов ли бот принимать оплаты: ключи ЮKassa, адрес сервера, оферта\n\n"
     "Telegram ID пользователя есть в уведомлениях об оплатах и отзывах."
 )
 ADMIN_STATS = (
@@ -191,6 +192,52 @@ ADMIN_LFL_FAILING = "⚠️ {failure} ({at})"
 ADMIN_YOOKASSA_OFF = "не подключена"
 ADMIN_YOOKASSA_TEST = "тестовый магазин"
 ADMIN_YOOKASSA_LIVE = "боевой магазин"
+
+CHECK_REPORT = "🔎 <b>Проверка перед приёмом оплат</b> · {now}\n\n{lines}\n\n{verdict}"
+CHECK_YOOKASSA_OFF = (
+    "<b>ЮKassa</b>: ключи не заданы, оплата отключена. "
+    "Впишите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env и перезапустите бота."
+)
+CHECK_YOOKASSA_BAD_KEYS = (
+    "<b>ЮKassa</b>: ключи не подходят. Сверьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY "
+    "в .env с разделом «Интеграция» → «Ключи API» того же магазина."
+)
+CHECK_YOOKASSA_UNAVAILABLE = (
+    "<b>ЮKassa</b>: не отвечает, проверить ключи не удалось. Повторите /check через минуту."
+)
+CHECK_YOOKASSA_DISABLED = (
+    "<b>ЮKassa</b>: магазин {shop_id} отключён и не принимает платежи. "
+    "Узнайте причину в личном кабинете или поддержке ЮKassa."
+)
+CHECK_YOOKASSA_TEST = (
+    "<b>ЮKassa</b>: тестовый магазин {shop_id}. Ключи верные, но деньги не списываются."
+)
+CHECK_YOOKASSA_LIVE = "<b>ЮKassa</b>: боевой магазин {shop_id}, ключи верные."
+CHECK_DOMAIN_EMPTY = (
+    "<b>Адрес сервера</b>: DOMAIN не задан. Уведомления ЮKassa не придут, оплаты "
+    "засчитываются фоновой сверкой раз в минуту. Для компьютера это нормально."
+)
+CHECK_DOMAIN_FAILED = (
+    "<b>Адрес сервера</b>: {url} не открылся изнутри сервера ({problem}). "
+    "Проверьте A-запись домена и <code>docker compose logs caddy</code>."
+)
+CHECK_DOMAIN_OK = "<b>Адрес сервера</b>: {url} отвечает, HTTPS работает."
+CHECK_WEBHOOK_NONE = (
+    "<b>Уведомления ЮKassa</b>: с запуска бота ещё не приходили. Если оплата уже была, "
+    "проверьте в магазине «Интеграция» → «HTTP-уведомления»: адрес <code>{url}</code>, "
+    "события payment.succeeded, payment.canceled, refund.succeeded."
+)
+CHECK_WEBHOOK_OK = "<b>Уведомления ЮKassa</b>: приходят, последнее {at}."
+CHECK_SELLER_MISSING = "<b>Оферта</b>: не заполнено {fields} в .env, в оферте стоит «не указано»."
+CHECK_SELLER_OK = "<b>Оферта</b>: данные исполнителя заполнены."
+CHECK_LFL = "<b>Сайт ЛФЛ</b>: {state}"
+CHECK_VERDICT_FAIL = "❌ <b>Есть проблемы.</b> Исправьте строки с ❌ и повторите /check."
+CHECK_VERDICT_TEST = (
+    "🧪 <b>Подключён тестовый магазин.</b> Проверьте оплату тестовой картой, "
+    "потом переключите ключи на боевые."
+)
+CHECK_VERDICT_WARN = "⚠️ <b>Боевой магазин подключён</b>, но проверьте строки с ⚠️."
+CHECK_VERDICT_OK = "✅ <b>Бот готов принимать оплаты.</b>"
 
 ADMIN_BAD_USER_ID = "Укажите Telegram ID числом, например <code>/user 123456</code>."
 ADMIN_USER_NOT_FOUND = (

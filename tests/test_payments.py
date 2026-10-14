@@ -279,3 +279,21 @@ async def test_sync_pending_raises_when_nothing_could_be_checked(
     # Ни один платёж не проверен: об этом должны узнать администраторы.
     with pytest.raises(YooKassaError):
         await service.sync_pending()
+
+
+async def test_payment_from_other_shop_is_forgotten(
+    service: PaymentService, session: AsyncSession, session_factory, yookassa: FakeYooKassa
+) -> None:
+    # Ссылка создана в тестовом магазине, потом ключи переключили на боевой:
+    # там такого платежа нет, ЮKassa отвечает 404.
+    old = await service.checkout(session, USER)
+    del yookassa.payments[old.id]
+
+    await service.sync_pending()  # без ошибки, чтобы не тревожить администраторов
+
+    async with session_factory() as s:
+        forgotten = await s.get(Payment, old.id)
+        assert forgotten is not None
+        assert (forgotten.status, forgotten.confirmation_url) == ("canceled", None)
+    new = await service.checkout(session, USER)
+    assert new.id != old.id

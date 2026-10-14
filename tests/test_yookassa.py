@@ -4,7 +4,7 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from lflbot.payments import RemotePayment, YooKassaClient, YooKassaError
+from lflbot.payments import RemotePayment, ShopInfo, YooKassaClient, YooKassaError
 from lflbot.payments.yookassa import API_URL
 
 PAYMENT = {
@@ -117,3 +117,29 @@ async def test_malformed_answer() -> None:
     client = make_client(lambda request: httpx.Response(200, json={"id": "x"}))
     with pytest.raises(YooKassaError):
         await client.get_payment("x")
+
+
+async def test_get_shop() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == f"{API_URL}/me"
+        return httpx.Response(200, json={"account_id": "123", "test": True, "status": "enabled"})
+
+    shop = await make_client(handler).get_shop()
+    assert shop == ShopInfo(account_id="123", test=True, status="enabled")
+    assert shop.enabled
+
+
+async def test_wrong_keys_error_has_status() -> None:
+    client = make_client(lambda request: httpx.Response(401, json={"type": "error"}))
+    with pytest.raises(YooKassaError) as error:
+        await client.get_shop()
+    assert error.value.status == 401
+
+
+async def test_network_error_has_no_status() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("нет связи")
+
+    with pytest.raises(YooKassaError) as error:
+        await make_client(handler).get_shop()
+    assert error.value.status is None

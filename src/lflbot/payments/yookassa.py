@@ -17,7 +17,25 @@ RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
 class YooKassaError(Exception):
-    """ЮKassa не ответила или отказала в запросе."""
+    """ЮKassa не ответила или отказала в запросе. status — HTTP-код отказа, если ответ был."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+@dataclass(frozen=True)
+class ShopInfo:
+    """Магазин, к которому подходят ключи из .env."""
+
+    account_id: str
+    test: bool
+    # enabled — магазин принимает платежи, disabled — нет (например, ещё не прошёл проверку).
+    status: str
+
+    @property
+    def enabled(self) -> bool:
+        return self.status == "enabled"
 
 
 @dataclass(frozen=True)
@@ -104,18 +122,32 @@ class YooKassaClient:
     async def get_payment(self, payment_id: str) -> RemotePayment:
         return RemotePayment.from_api(await self._request("GET", f"/payments/{payment_id}"))
 
+    async def get_shop(self) -> ShopInfo:
+        """Какой магазин отвечает на ключи: заодно проверяет, что ключи верные."""
+        data = await self._request("GET", "/me")
+        try:
+            return ShopInfo(
+                account_id=str(data["account_id"]),
+                test=bool(data["test"]),
+                status=str(data.get("status", "enabled")),
+            )
+        except (KeyError, TypeError) as exc:
+            raise YooKassaError(f"Непонятный ответ ЮKassa: {exc!r}") from exc
+
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         last_error: Exception | None = None
+        status: int | None = None
         for attempt in range(1, self._attempts + 1):
             try:
                 response = await self._http.request(method, path, **kwargs)
             except httpx.HTTPError as exc:
-                last_error = exc
+                last_error, status = exc, None
                 logger.warning("ЮKassa %s %s, попытка %d: %r", method, path, attempt, exc)
             else:
                 if response.status_code == 200:
                     return response.json()
-                last_error = YooKassaError(f"HTTP {response.status_code}: {response.text[:500]}")
+                status = response.status_code
+                last_error = YooKassaError(f"HTTP {status}: {response.text[:500]}", status)
                 logger.warning(
                     "ЮKassa %s %s, попытка %d: HTTP %d %s",
                     method,
@@ -128,4 +160,4 @@ class YooKassaClient:
                     break
             if attempt < self._attempts:
                 await asyncio.sleep(self._backoff * 2 ** (attempt - 1))
-        raise YooKassaError(f"{method} {path}: {last_error}") from last_error
+        raise YooKassaError(f"{method} {path}: {last_error}", status) from last_error

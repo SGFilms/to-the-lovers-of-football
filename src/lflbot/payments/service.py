@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from lflbot import subscription
 from lflbot.db import Payment, User
 from lflbot.db.base import utcnow
-from lflbot.payments.yookassa import RemotePayment, YooKassaClient
+from lflbot.payments.yookassa import RemotePayment, ShopInfo, YooKassaClient, YooKassaError
 from lflbot.users import get_or_create_user
 
 logger = logging.getLogger(__name__)
@@ -147,11 +147,18 @@ class PaymentService:
         self.description = description
         self.return_url = return_url
         self.on_change = on_change
+        # Когда последний раз пришло уведомление ЮKassa (с её адреса). Для проверки /check.
+        self.last_webhook_at: datetime | None = None
 
     @property
     def enabled(self) -> bool:
         """Ключи ЮKassa заданы и оплату можно принимать."""
         return self._yookassa is not None
+
+    async def shop(self) -> ShopInfo:
+        """Магазин ЮKassa, к которому подходят ключи."""
+        assert self._yookassa is not None, "оплата не настроена"
+        return await self._yookassa.get_shop()
 
     async def checkout(self, session: AsyncSession, user_id: int) -> Payment:
         """Ссылка на оплату для пользователя. Пока есть свежая неоплаченная ссылка,
@@ -205,7 +212,13 @@ class PaymentService:
     async def sync(self, payment_id: str) -> PaymentChange | None:
         """Перепроверяет платёж в ЮKassa и применяет изменения."""
         assert self._yookassa is not None, "оплата не настроена"
-        remote = await self._yookassa.get_payment(payment_id)
+        try:
+            remote = await self._yookassa.get_payment(payment_id)
+        except YooKassaError as exc:
+            if exc.status != 404:
+                raise
+            await self._forget_missing(payment_id)
+            return None
         async with self._session_factory() as session:
             change = await apply_remote(session, remote)
         if change is not None and self.on_change is not None:
@@ -214,6 +227,18 @@ class PaymentService:
             except Exception:
                 logger.exception("Не удалось сообщить об изменении платежа %s", payment_id)
         return change
+
+    async def _forget_missing(self, payment_id: str) -> None:
+        """Магазин не знает такой платёж: обычно он создан в другом магазине, например
+        в тестовом до переключения ключей на боевые. Неоплаченный платёж считаем
+        отменённым, чтобы его больше не сверять и не показывать ссылку на него."""
+        logger.warning("Платежа %s нет в магазине ЮKassa, считаю его отменённым", payment_id)
+        async with self._session_factory() as session:
+            payment = await session.get(Payment, payment_id, with_for_update=True)
+            if payment is not None and payment.status in UNPAID_STATUSES:
+                payment.status = CANCELED
+                payment.confirmation_url = None
+            await session.commit()
 
     async def sync_pending(self) -> None:
         """Сверка неоплаченных платежей: на случай, если уведомление не дошло, бот

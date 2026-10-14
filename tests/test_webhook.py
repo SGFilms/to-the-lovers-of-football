@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -105,3 +106,17 @@ async def test_unrelated_event_is_acknowledged() -> None:
 async def test_api_failure_asks_yookassa_to_retry() -> None:
     status, _ = await post(payment_event(), sync=AsyncMock(side_effect=YooKassaError("нет")))
     assert status == 503
+
+
+async def test_notification_time_is_remembered_for_check() -> None:
+    async def send(ip: str) -> object:
+        service = AsyncMock()
+        service.last_webhook_at = None
+        app = web.Application()
+        setup_webhook(app, service, check_ip=True)
+        async with TestClient(TestServer(app)) as client:
+            await client.post(WEBHOOK_PATH, headers={"X-Forwarded-For": ip}, json=payment_event())
+        return service.last_webhook_at
+
+    assert isinstance(await send(YOOKASSA_IP), datetime)
+    assert await send("8.8.8.8") is None
