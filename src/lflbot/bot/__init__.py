@@ -7,9 +7,10 @@ from lflbot.bot.middlewares import DbSessionMiddleware
 
 BOT_COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
-    BotCommand(command="subscribe", description="Оформить или продлить подписку"),
+    BotCommand(command="schedule", description="Расписание команды"),
     BotCommand(command="subscription", description="Моя подписка"),
-    BotCommand(command="help", description="Как пользоваться ботом"),
+    BotCommand(command="subscribe", description="Оформить или продлить подписку"),
+    BotCommand(command="help", description="Помощь, отзыв, оферта"),
 ]
 
 

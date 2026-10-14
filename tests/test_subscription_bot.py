@@ -24,11 +24,10 @@ from lflbot.payments import PaymentChange, PaymentService
 from lflbot.reminders import Reminder
 from tests.conftest import requires_db
 from tests.fakes import PRICE, FakeYooKassa
+from tests.tg import button_texts, make_settings, shown
 
 MSK = ZoneInfo("Europe/Moscow")
-SETTINGS = SimpleNamespace(
-    tz=MSK, admin_ids=[1, 2], payment_description="Подписка на расписание матчей ЛФЛ, 30 дней"
-)
+SETTINGS = make_settings(admin_ids=[1, 2])
 USER = 42
 NOW = datetime(2026, 10, 14, 9, 5, tzinfo=UTC)
 
@@ -51,19 +50,21 @@ def test_formatting() -> None:
 def test_subscription_text_with_history() -> None:
     paid = Payment(id="p", amount=PRICE, paid_at=NOW - timedelta(days=1))
     refunded = Payment(id="r", amount=PRICE, paid_at=NOW - timedelta(days=2), refunded_at=NOW)
-    text = subscription_text(NOW + timedelta(days=29), [paid, refunded], NOW, MSK)
+    text = subscription_text(NOW + timedelta(days=29), [paid, refunded], NOW, MSK, PRICE, 30)
     assert text.startswith(texts.MY_SUBSCRIPTION_ACTIVE.format(ends_at="12.11.2026, 12:05 МСК"))
     assert "13.10.2026 — 1 ₽" in text
     assert "12.10.2026 — 1 ₽, возвращено" in text
 
-    assert subscription_text(None, [], NOW, MSK) == texts.MY_SUBSCRIPTION_NONE
-    assert subscription_text(NOW, [], NOW, MSK).startswith("Подписка закончилась")
+    assert subscription_text(None, [], NOW, MSK, PRICE, 30) == texts.MY_SUBSCRIPTION_NONE.format(
+        price="1", days=30
+    )
+    assert "Закончилась 14.10.2026" in subscription_text(NOW, [], NOW, MSK, PRICE, 30)
 
 
 async def test_subscribe_when_payments_disabled() -> None:
     message = fake_message()
     await cmd_subscribe(message, AsyncMock(), make_service(None, None), SETTINGS)
-    message.answer.assert_awaited_once_with(texts.PAYMENTS_DISABLED)
+    assert message.answer.await_args.args == (texts.PAYMENTS_DISABLED,)
 
 
 @requires_db
@@ -72,8 +73,12 @@ async def test_subscribe_shows_payment_link(engine: AsyncEngine, session: AsyncS
     await cmd_subscribe(message, session, make_service(engine, FakeYooKassa()), SETTINGS)
 
     call = message.answer.await_args
-    assert call.args[0] == texts.SUBSCRIBE_OFFER.format(days=30, price="1")
-    pay, check = [row[0] for row in call.kwargs["reply_markup"].inline_keyboard]
+    assert call.args[0] == (
+        texts.SUBSCRIBE_OFFER.format(days=30, price="1") + texts.SUBSCRIBE_OFFER_TERMS
+    )
+    markup = call.kwargs["reply_markup"]
+    assert button_texts(markup)[2:] == [texts.OFFER_BUTTON, texts.MENU_BUTTON]
+    pay, check = [row[0] for row in markup.inline_keyboard[:2]]
     assert pay.text == "Оплатить 1 ₽"
     assert pay.url == "https://yoomoney.ru/checkout/pay-1"
     assert CheckPaymentCallback.unpack(check.callback_data).payment_id == "pay-1"
@@ -85,7 +90,7 @@ async def test_subscribe_when_yookassa_fails(engine: AsyncEngine, session: Async
     yookassa.fail = True
     message = fake_message()
     await cmd_subscribe(message, session, make_service(engine, yookassa), SETTINGS)
-    message.answer.assert_awaited_once_with(texts.PAYMENT_CREATE_FAILED)
+    assert message.answer.await_args.args == (texts.PAYMENT_CREATE_FAILED,)
 
 
 def fake_callback(user_id: int = USER) -> SimpleNamespace:
@@ -93,6 +98,7 @@ def fake_callback(user_id: int = USER) -> SimpleNamespace:
     message.html_text = "Оффер"
     message.reply_markup = object()
     message.edit_text = AsyncMock()
+    message.photo = None
     return SimpleNamespace(
         from_user=SimpleNamespace(id=user_id), answer=AsyncMock(), message=message
     )
@@ -131,9 +137,9 @@ async def test_check_paid_payment(engine: AsyncEngine, session: AsyncSession) ->
     await on_check_payment(callback, CheckPaymentCallback(payment_id=payment.id), session, service)
 
     service.on_change.assert_awaited_once()
-    callback.message.edit_text.assert_awaited_once_with(
-        "Оффер" + texts.PAYMENT_DONE_MARK, reply_markup=None
-    )
+    text, markup = shown(callback.message)
+    assert text == "Оффер" + texts.PAYMENT_DONE_MARK
+    assert button_texts(markup) == [texts.MENU_BUTTON]
 
     # Повторное нажатие: платёж уже засчитан, ЮKassa не спрашиваем.
     yookassa.fail = True
@@ -161,7 +167,12 @@ async def test_cannot_check_someone_elses_payment(
 async def test_my_subscription(engine: AsyncEngine, session: AsyncSession) -> None:
     message = fake_message()
     await cmd_subscription(message, session, SETTINGS)
-    message.answer.assert_awaited_once_with(texts.MY_SUBSCRIPTION_NONE)
+    call = message.answer.await_args
+    assert call.args == (texts.MY_SUBSCRIPTION_NONE.format(price="1", days=30),)
+    assert button_texts(call.kwargs["reply_markup"]) == [
+        texts.SUBSCRIBE_BUTTON.format(price="1"),
+        texts.MENU_BUTTON,
+    ]
 
 
 def paid_change(**kwargs) -> PaymentChange:

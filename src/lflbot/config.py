@@ -61,6 +61,13 @@ class Settings(DatabaseSettings):
     # Название услуги в платеже ЮKassa и в уведомлении администратору для чека.
     payment_description: str = "Подписка на расписание матчей ЛФЛ, 30 дней"
 
+    # Исполнитель для оферты: ФИО самозанятого, ИНН и email для претензий.
+    seller_name: str = ""
+    seller_inn: str = ""
+    seller_email: str = ""
+    # Домен сервера. Если задан, оферта и политика доступны на https://ДОМЕН/offer и /privacy.
+    domain: str = ""
+
     # Часовой пояс, в котором пользователю показываются даты и время.
     display_timezone: str = "Europe/Moscow"
 
@@ -87,6 +94,10 @@ class Settings(DatabaseSettings):
     @property
     def payments_enabled(self) -> bool:
         return bool(self.yookassa_shop_id and self.yookassa_secret_key.get_secret_value())
+
+    @property
+    def public_url(self) -> str:
+        return f"https://{self.domain}" if self.domain else ""
 
     @cached_property
     def tz(self) -> ZoneInfo:

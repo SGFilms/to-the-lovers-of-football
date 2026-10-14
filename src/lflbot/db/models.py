@@ -1,7 +1,16 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, SmallInteger, String, Text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lflbot.db.base import Base, utcnow
@@ -10,7 +19,8 @@ from lflbot.db.base import Base, utcnow
 class User(Base):
     """Пользователь бота.
 
-    Храним только числовой Telegram ID и даты: никаких имён, ников, телефонов и email.
+    Храним только числовой Telegram ID, даты и избранную команду: никаких имён, ников,
+    телефонов и email.
     """
 
     __tablename__ = "users"
@@ -24,6 +34,9 @@ class User(Base):
     # Последнее отправленное напоминание об окончании (за сколько дней, 0 — уже закончилась).
     # Сбрасывается, когда меняется дата окончания.
     last_reminder_days: Mapped[int | None] = mapped_column(SmallInteger)
+    # Последняя команда, расписание которой смотрел пользователь: кнопка с ней есть в меню.
+    favorite_club_id: Mapped[int | None] = mapped_column(Integer)
+    favorite_club_name: Mapped[str | None] = mapped_column(String(200))
 
 
 class Payment(Base):
