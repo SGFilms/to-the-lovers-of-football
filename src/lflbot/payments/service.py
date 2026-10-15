@@ -112,7 +112,7 @@ async def apply_remote(
 
 
 async def _lock_user(session: AsyncSession, user_id: int) -> User:
-    # База уже занята этой сессией (lock_for_update в apply_remote).
+    await lock_for_update(session)
     user = await session.get(User, user_id, populate_existing=True)
     assert user is not None, "у платежа всегда есть пользователь (внешний ключ)"
     return user
