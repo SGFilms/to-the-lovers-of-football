@@ -27,6 +27,7 @@ from lflbot.db.base import utcnow
 from lflbot.legal import format_amount
 from lflbot.lfl import LflClient, LflUnavailableError
 from lflbot.schedule import upcoming_matches
+from lflbot.team_search import find_teams
 from lflbot.users import remember_favorite
 
 logger = logging.getLogger(__name__)
@@ -64,22 +65,30 @@ async def search(
     query = query[:MAX_QUERY_LENGTH]
     screen = await message.answer(texts.SEARCHING)
     try:
-        found = await lfl.search_clubs(query)
+        found = await find_teams(lfl, query)
     except LflUnavailableError:
         await show_screen(screen, texts.LFL_UNAVAILABLE, search_keyboard())
         return
 
-    if not found.clubs:
+    if not found.clubs and found.refine:
+        name = escape(found.name)
+        text = texts.TEAM_NOT_FOUND_REFINED.format(name=name, refine=escape(found.refine))
+        if found.total > found.received:
+            text += texts.TEAM_NOT_FOUND_TRUNCATED.format(
+                received=found.received, total=found.total, name=name
+            )
+        await show_screen(screen, text, search_keyboard())
+    elif not found.clubs:
         text = texts.TEAM_NOT_FOUND.format(query=escape(query))
         await show_screen(screen, text, search_keyboard())
     elif len(found.clubs) == 1:
         await show_schedule(screen, user_id, found.clubs[0].id, session, lfl, settings)
     else:
         shown = found.clubs[:MAX_CHOICES]
-        if found.total > len(shown):
-            text = texts.CHOOSE_TEAM_MORE.format(
-                total=found.total, query=escape(query), shown=len(shown)
-            )
+        # После отбора по городу или лиге известно только, сколько подошло из выданных.
+        total = len(found.clubs) if found.refine else found.total
+        if total > len(shown):
+            text = texts.CHOOSE_TEAM_MORE.format(total=total, query=escape(query), shown=len(shown))
         else:
             text = texts.CHOOSE_TEAM.format(query=escape(query))
         await show_screen(screen, text, clubs_keyboard(shown))

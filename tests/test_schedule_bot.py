@@ -136,6 +136,61 @@ async def test_several_clubs_offer_choice(session: AsyncSession) -> None:
     assert choice[-1].text == texts.MENU_BUTTON
 
 
+def search_by_name(results: dict[str, ClubSearch]) -> AsyncMock:
+    """Сайт, который находит клубы только по точному названию из results."""
+    lfl = fake_lfl()
+    lfl.search_clubs.side_effect = lambda query: results.get(query, ClubSearch([], 0))
+    return lfl
+
+
+METEORS = ClubSearch(
+    [
+        Club(id=1, name="Метеор", league="ЛФЛ Георгиевск"),
+        Club(id=2, name="Метеор", league="Ветеранская лига 48+", region="Москва"),
+        Club(id=3, name="Метеор", league="ЛФЛ Ставрополь"),
+    ],
+    67,
+)
+
+
+async def test_refined_search_by_city(session: AsyncSession) -> None:
+    lfl = search_by_name({"Метеор": METEORS})
+    await type_team(session, lfl, "Метеор георгиевск")
+
+    assert [call.args[0] for call in lfl.search_clubs.await_args_list] == [
+        "Метеор георгиевск",
+        "Метеор",
+    ]
+    # Подошла одна команда, поэтому сразу её расписание.
+    lfl.club_schedule.assert_awaited_once_with(1)
+
+
+async def test_refined_search_offers_matching_clubs(session: AsyncSession) -> None:
+    lfl = search_by_name({"Метеор": METEORS})
+    message = await type_team(session, lfl, "Метеор ЛФЛ")
+
+    text, markup = shown(message.sent[0])
+    assert text == texts.CHOOSE_TEAM.format(query="Метеор ЛФЛ")
+    assert [b.text for b in buttons(markup)[:-1]] == [
+        "Метеор · ЛФЛ Георгиевск",
+        "Метеор · ЛФЛ Ставрополь",
+    ]
+
+
+async def test_refined_search_finds_nothing(session: AsyncSession) -> None:
+    lfl = search_by_name({"Метеор": METEORS})
+    message = await type_team(session, lfl, "Метеор Осенний Чемпионат")
+
+    assert [call.args[0] for call in lfl.search_clubs.await_args_list] == [
+        "Метеор Осенний Чемпионат",
+        "Метеор Осенний",
+        "Метеор",
+    ]
+    text = shown(message.sent[0])[0]
+    assert "нет подходящей к «Осенний Чемпионат»" in text
+    assert "только 3 из 67" in text
+
+
 async def test_choosing_club_edits_screen(session: AsyncSession) -> None:
     await subscribe(session)
     callback = tg_callback()
