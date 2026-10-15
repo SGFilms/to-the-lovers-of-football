@@ -127,8 +127,10 @@ async def test_several_clubs_offer_choice(session: AsyncSession) -> None:
     lfl.club_schedule.assert_not_awaited()
     text, markup = shown(message.sent[0])
     assert "146" in text
+    assert "выдаёт только 12" in text
     choice = buttons(markup)
-    assert len(choice) == 11
+    # Все команды, которые вернул сайт, и кнопка меню.
+    assert len(choice) == 13
     assert choice[0].text == "Спартак · Лига 0"
     assert ScheduleCallback.unpack(choice[3].callback_data).club_id == 3
     assert choice[-1].text == texts.MENU_BUTTON
