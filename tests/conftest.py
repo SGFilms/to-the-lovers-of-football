@@ -1,6 +1,5 @@
-"""Общие фикстуры. Тестам с базой нужен PostgreSQL: адрес задаётся в TEST_DATABASE_URL."""
+"""Общие фикстуры. Тесты с базой работают с временным файлом SQLite."""
 
-import os
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -13,9 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from lflbot.db import create_engine, create_session_factory
 
 ROOT = Path(__file__).resolve().parent.parent
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
-
-requires_db = pytest.mark.skipif(not TEST_DATABASE_URL, reason="TEST_DATABASE_URL не задан")
 
 
 def alembic_config() -> Config:
@@ -25,14 +21,17 @@ def alembic_config() -> Config:
 
 
 @pytest.fixture(scope="session")
-def migrated_db(monkeypatch_session: pytest.MonkeyPatch) -> str:
+def migrated_db(
+    monkeypatch_session: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> str:
     """Схема создаётся настоящими миграциями, чтобы тесты проверяли и их."""
-    assert TEST_DATABASE_URL
-    monkeypatch_session.setenv("DATABASE_URL", TEST_DATABASE_URL)
+    url = f"sqlite+aiosqlite:///{tmp_path_factory.mktemp('db') / 'test.db'}"
+    monkeypatch_session.setenv("DATABASE_URL", url)
     cfg = alembic_config()
+    command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
-    return TEST_DATABASE_URL
+    return url
 
 
 @pytest.fixture(scope="session")
@@ -47,7 +46,8 @@ async def engine(migrated_db: str) -> AsyncIterator[AsyncEngine]:
     engine = create_engine(migrated_db)
     yield engine
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE users, payments, subscription_grants"))
+        for table in ("payments", "subscription_grants", "users"):
+            await conn.execute(text(f"DELETE FROM {table}"))
     await engine.dispose()
 
 

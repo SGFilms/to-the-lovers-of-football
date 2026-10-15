@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
-from sqlalchemy import URL
 
 PROXY_SCHEMES = ("socks5", "socks4", "http")
 
@@ -19,25 +18,14 @@ class DatabaseSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # База данных. DATABASE_URL, если задан, важнее отдельных параметров (удобно для тестов).
+    # Файл базы SQLite. /data — постоянное хранилище: в Amvera оно переживает перезапуски
+    # и пересборки, в docker compose это том bot-data.
+    database_path: str = "/data/lflbot.db"
+    # Полный адрес базы для SQLAlchemy, если задан, важнее DATABASE_PATH (удобно для тестов).
     database_url: str | None = None
-    postgres_host: str = "db"
-    postgres_port: int = 5432
-    postgres_user: str = "lflbot"
-    postgres_password: SecretStr = SecretStr("")
-    postgres_db: str = "lflbot"
 
-    def db_url(self) -> str | URL:
-        if self.database_url:
-            return self.database_url
-        return URL.create(
-            drivername="postgresql+asyncpg",
-            username=self.postgres_user,
-            password=self.postgres_password.get_secret_value(),
-            host=self.postgres_host,
-            port=self.postgres_port,
-            database=self.postgres_db,
-        )
+    def db_url(self) -> str:
+        return self.database_url or f"sqlite+aiosqlite:///{self.database_path}"
 
 
 class Settings(DatabaseSettings):

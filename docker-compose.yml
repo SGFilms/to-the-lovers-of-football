@@ -1,31 +1,13 @@
 # Локально:      docker compose up --build
 # На сервере:    docker compose --profile prod up -d --build
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-lflbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
-      POSTGRES_DB: ${POSTGRES_DB:-lflbot}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    # Порт базы наружу не открыт: к ней подключается только бот внутри сети Docker.
-
   bot:
     build: .
     restart: unless-stopped
     env_file: .env
-    environment:
-      POSTGRES_HOST: db
-    depends_on:
-      db:
-        condition: service_healthy
+    volumes:
+      # Файл базы SQLite (/data/lflbot.db) живёт в томе и переживает пересборку контейнера.
+      - bot-data:/data
     expose:
       - "8080"
 
@@ -46,6 +28,6 @@ services:
       - bot
 
 volumes:
-  pgdata:
+  bot-data:
   caddy_data:
   caddy_config:

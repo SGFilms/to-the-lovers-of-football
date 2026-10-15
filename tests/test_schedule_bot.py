@@ -16,7 +16,6 @@ from lflbot.db import User
 from lflbot.db.base import utcnow
 from lflbot.lfl import Club, ClubSchedule, ClubSearch, LflUnavailableError
 from lflbot.users import get_or_create_user
-from tests.conftest import requires_db
 from tests.tg import (
     MONTANA,
     USER,
@@ -29,8 +28,6 @@ from tests.tg import (
     tg_callback,
     tg_message,
 )
-
-pytestmark = requires_db
 
 SETTINGS = make_settings()
 FOUND_MONTANA = ClubSearch([MONTANA], 1)

@@ -1,7 +1,7 @@
-"""Резервные копии базы, которые уходят с сервера: администраторам в Telegram и на почту.
+"""Резервные копии базы, которые уходят с хостинга: администраторам в Telegram и на почту.
 
-Копия — обычный текстовый дамп pg_dump, сжатый gzip, тот же формат, что у
-scripts/backup.sh. Если задан BACKUP_PASSWORD, копия шифруется openssl (AES-256), и
+Копия — файл базы SQLite, сжатый gzip: распакованный, он сразу годится вместо файла
+базы. Если задан BACKUP_PASSWORD, копия шифруется openssl (AES-256), и
 scripts/restore.sh расшифровывает её той же командой openssl."""
 
 import asyncio
@@ -9,16 +9,20 @@ import gzip
 import logging
 import os
 import smtplib
+import sqlite3
 import ssl
+import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, tzinfo
 from email.message import EmailMessage
+from pathlib import Path
 
-from sqlalchemy import URL, func, make_url, select
+from sqlalchemy import func, make_url, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lflbot.db import Payment, User
+from lflbot.db.session import BUSY_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +64,7 @@ class BackupResult:
     backup: Backup | None
     deliveries: list[Delivery]
     at: datetime
-    # Копию не удалось сделать: pg_dump или шифрование.
+    # Копию не удалось сделать: копирование базы или шифрование.
     error: str | None = None
 
     @property
@@ -83,21 +87,6 @@ def format_size(size: int) -> str:
     return f"{size / 1024 / 1024:.1f} МБ".replace(".", ",")
 
 
-def pg_env(db_url: str | URL) -> dict[str, str]:
-    """Параметры подключения для pg_dump. Пароль передаётся через окружение, чтобы его
-    не было видно в списке процессов."""
-    url = make_url(db_url)
-    env = {
-        "PGHOST": url.host or "localhost",
-        "PGPORT": str(url.port or 5432),
-        "PGUSER": url.username or "",
-        "PGDATABASE": url.database or "",
-    }
-    if url.password:
-        env["PGPASSWORD"] = str(url.password)
-    return env
-
-
 async def _run(args: list[str], env: dict[str, str], stdin: bytes | None = None) -> bytes:
     try:
         process = await asyncio.create_subprocess_exec(
@@ -116,9 +105,33 @@ async def _run(args: list[str], env: dict[str, str], stdin: bytes | None = None)
     return out
 
 
-async def dump(db_url: str | URL) -> bytes:
-    """Текстовый дамп базы, как у pg_dump --no-owner."""
-    return await _run(["pg_dump", "--no-owner"], pg_env(db_url))
+def copy_database(path: str) -> bytes:
+    """Согласованная копия файла базы через backup API SQLite: пока она снимается,
+    бот продолжает работать с базой."""
+    uri = Path(path).resolve().as_uri() + "?mode=ro"
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "copy.db"
+        source = sqlite3.connect(uri, uri=True, timeout=BUSY_TIMEOUT)
+        try:
+            copy = sqlite3.connect(target)
+            try:
+                source.backup(copy)
+            finally:
+                copy.close()
+        finally:
+            source.close()
+        return target.read_bytes()
+
+
+async def dump(db_url: str) -> bytes:
+    """Копия файла базы SQLite."""
+    path = make_url(db_url).database
+    if not path:
+        raise BackupError("В адресе базы нет пути к файлу")
+    try:
+        return await asyncio.to_thread(copy_database, path)
+    except sqlite3.Error as exc:
+        raise BackupError(f"Не удалось скопировать базу {path}: {exc}") from exc
 
 
 async def encrypt(data: bytes, password: str) -> bytes:
@@ -135,7 +148,7 @@ async def decrypt(data: bytes, password: str) -> bytes:
 
 async def make_backup(
     session_factory: async_sessionmaker[AsyncSession],
-    db_url: str | URL,
+    db_url: str,
     password: str,
     now: datetime,
     tz: tzinfo,
@@ -144,7 +157,7 @@ async def make_backup(
         users = await session.scalar(select(func.count()).select_from(User)) or 0
         payments = await session.scalar(select(func.count()).select_from(Payment)) or 0
     data = gzip.compress(await dump(db_url))
-    filename = f"lflbot-{now.astimezone(tz):%Y%m%d-%H%M%S}.sql.gz"
+    filename = f"lflbot-{now.astimezone(tz):%Y%m%d-%H%M%S}.db.gz"
     if password:
         data = await encrypt(data, password)
         filename += ".enc"

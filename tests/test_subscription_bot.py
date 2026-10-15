@@ -22,7 +22,6 @@ from lflbot.bot.subscription_view import (
 from lflbot.db import Payment, create_session_factory
 from lflbot.payments import PaymentChange, PaymentService
 from lflbot.reminders import Reminder
-from tests.conftest import requires_db
 from tests.fakes import PRICE, FakeYooKassa
 from tests.tg import button_texts, make_settings, shown
 
@@ -67,7 +66,6 @@ async def test_subscribe_when_payments_disabled() -> None:
     assert message.answer.await_args.args == (texts.PAYMENTS_DISABLED,)
 
 
-@requires_db
 async def test_subscribe_shows_payment_link(engine: AsyncEngine, session: AsyncSession) -> None:
     message = fake_message()
     await cmd_subscribe(message, session, make_service(engine, FakeYooKassa()), SETTINGS)
@@ -84,7 +82,6 @@ async def test_subscribe_shows_payment_link(engine: AsyncEngine, session: AsyncS
     assert CheckPaymentCallback.unpack(check.callback_data).payment_id == "pay-1"
 
 
-@requires_db
 async def test_subscribe_when_yookassa_fails(engine: AsyncEngine, session: AsyncSession) -> None:
     yookassa = FakeYooKassa()
     yookassa.fail = True
@@ -104,7 +101,6 @@ def fake_callback(user_id: int = USER) -> SimpleNamespace:
     )
 
 
-@requires_db
 @pytest.mark.parametrize(
     ("action", "alert"),
     [(None, texts.PAYMENT_NOT_YET), ("cancel", texts.PAYMENT_CANCELED)],
@@ -125,7 +121,6 @@ async def test_check_unpaid_payment(
     callback.message.edit_text.assert_not_awaited()
 
 
-@requires_db
 async def test_check_paid_payment(engine: AsyncEngine, session: AsyncSession) -> None:
     yookassa = FakeYooKassa()
     service = make_service(engine, yookassa)
@@ -148,7 +143,6 @@ async def test_check_paid_payment(engine: AsyncEngine, session: AsyncSession) ->
     again.answer.assert_awaited_once_with(texts.PAYMENT_ALREADY_DONE, show_alert=True)
 
 
-@requires_db
 async def test_cannot_check_someone_elses_payment(
     engine: AsyncEngine, session: AsyncSession
 ) -> None:
@@ -163,7 +157,6 @@ async def test_cannot_check_someone_elses_payment(
     service.sync.assert_not_awaited()
 
 
-@requires_db
 async def test_my_subscription(engine: AsyncEngine, session: AsyncSession) -> None:
     message = fake_message()
     await cmd_subscription(message, session, SETTINGS)

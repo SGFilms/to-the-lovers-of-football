@@ -9,10 +9,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 KEEP_DAYS="${KEEP_DAYS:-14}"
 mkdir -p backups
-file="backups/lflbot-$(date +%Y%m%d-%H%M%S).sql.gz"
+file="backups/lflbot-$(date +%Y%m%d-%H%M%S).db.gz"
 
-docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner' \
-  | gzip > "$file"
+# Копию файла базы снимает сам контейнер бота, тем же способом, что и ежедневные копии.
+docker compose exec -T bot python -c '
+import sys
+from sqlalchemy import make_url
+from lflbot.backup import copy_database
+from lflbot.config import DatabaseSettings
+sys.stdout.buffer.write(copy_database(make_url(DatabaseSettings().db_url()).database))
+' | gzip > "$file"
 echo "Копия сохранена: $file"
 
 if [[ -n "${BACKUP_REMOTE:-}" ]]; then
@@ -20,4 +26,4 @@ if [[ -n "${BACKUP_REMOTE:-}" ]]; then
   echo "Копия отправлена в $BACKUP_REMOTE"
 fi
 
-find backups -name 'lflbot-*.sql.gz' -mtime +"$KEEP_DAYS" -delete
+find backups -name 'lflbot-*.gz' -mtime +"$KEEP_DAYS" -delete

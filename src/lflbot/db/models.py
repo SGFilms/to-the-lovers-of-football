@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
-    DateTime,
     ForeignKey,
     Integer,
     Numeric,
@@ -13,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lflbot.db.base import Base, utcnow
+from lflbot.db.base import Base, UtcDateTime, utcnow
 
 
 class User(Base):
@@ -26,11 +25,11 @@ class User(Base):
     __tablename__ = "users"
 
     telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     # Доступ к расписанию есть, пока текущее время раньше этой даты.
-    subscription_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subscription_ends_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     # Когда пользователь воспользовался бесплатным примером расписания.
-    free_preview_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    free_preview_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     # Последнее отправленное напоминание об окончании (за сколько дней, 0 — уже закончилась).
     # Сбрасывается, когда меняется дата окончания.
     last_reminder_days: Mapped[int | None] = mapped_column(SmallInteger)
@@ -55,11 +54,11 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(32))
     # Ссылка на страницу оплаты, пока платёж не оплачен.
     confirmation_url: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     # Когда дни этого платежа добавлены к подписке. Пусто — ещё не засчитан.
-    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     # Когда дни сняты из-за возврата денег.
-    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refunded_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
 class SubscriptionGrant(Base):
@@ -74,6 +73,6 @@ class SubscriptionGrant(Base):
     days: Mapped[int] = mapped_column(SmallInteger)
     # Telegram ID администратора, который выдал дни.
     admin_id: Mapped[int] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     # Дата окончания подписки сразу после изменения.
-    subscription_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    subscription_ends_at: Mapped[datetime] = mapped_column(UtcDateTime)

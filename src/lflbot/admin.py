@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lflbot import subscription
-from lflbot.db import Payment, SubscriptionGrant, User
+from lflbot.db import Payment, SubscriptionGrant, User, lock_for_update
 from lflbot.payments.service import UNPAID_STATUSES
 from lflbot.users import get_or_create_user
 
@@ -37,6 +37,11 @@ class Stats:
     refunds_month: int
     # Неоплаченные ссылки за последние сутки.
     pending_day: int
+
+
+def _money(value: object) -> Decimal:
+    """SQLite складывает суммы в числах с плавающей точкой: округляем до копеек."""
+    return Decimal(str(value)).quantize(Decimal("0.01"))
 
 
 async def collect_stats(session: AsyncSession, now: datetime) -> Stats:
@@ -78,9 +83,9 @@ async def collect_stats(session: AsyncSession, now: datetime) -> Stats:
         subscribers=users[3],
         previews_used=users[4],
         paid_month=payments[0],
-        paid_month_sum=Decimal(payments[1]),
+        paid_month_sum=_money(payments[1]),
         paid_total=payments[2],
-        paid_total_sum=Decimal(payments[3]),
+        paid_total_sum=_money(payments[3]),
         refunds_month=payments[4],
         pending_day=payments[5],
     )
@@ -126,7 +131,8 @@ async def grant_days(
     кто ещё не открывал нового бота."""
     assert days != 0 and abs(days) <= MAX_GRANT_DAYS
     await get_or_create_user(session, telegram_id)
-    user = await session.get(User, telegram_id, with_for_update=True, populate_existing=True)
+    await lock_for_update(session)
+    user = await session.get(User, telegram_id, populate_existing=True)
     assert user is not None
 
     if days > 0:

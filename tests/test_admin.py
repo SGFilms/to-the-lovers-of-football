@@ -6,9 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lflbot.admin import NothingToTakeError, collect_stats, grant_days, user_card
 from lflbot.db import Payment, User
-from tests.conftest import requires_db
-
-pytestmark = requires_db
 
 NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 ADMIN = 1

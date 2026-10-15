@@ -3,9 +3,6 @@ from alembic.migration import MigrationContext
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from lflbot.db import Base
-from tests.conftest import requires_db
-
-pytestmark = requires_db
 
 
 async def test_migrations_match_models(engine: AsyncEngine) -> None:

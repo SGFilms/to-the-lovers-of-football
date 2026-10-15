@@ -7,9 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from lflbot.db import User, create_session_factory
 from lflbot.lfl import LflUnavailableError
 from lflbot.warmup import ScheduleWarmer, favorite_clubs
-from tests.conftest import requires_db
-
-pytestmark = requires_db
 
 NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 HOUR = 60 * 60

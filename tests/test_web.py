@@ -3,11 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from lflbot.db import create_engine
 from lflbot.web import create_web_app, legal_pages
-from tests.conftest import requires_db
 from tests.tg import make_settings
 
 
-@requires_db
 async def test_health_ok(engine: AsyncEngine) -> None:
     async with TestClient(TestServer(create_web_app(engine))) as client:
         resp = await client.get("/health")
@@ -16,7 +14,7 @@ async def test_health_ok(engine: AsyncEngine) -> None:
 
 
 async def test_health_reports_unavailable_database() -> None:
-    engine = create_engine("postgresql+asyncpg://nobody@127.0.0.1:1/none")
+    engine = create_engine("sqlite+aiosqlite:////nonexistent/folder/none.db")
     try:
         async with TestClient(TestServer(create_web_app(engine))) as client:
             resp = await client.get("/health")
@@ -27,7 +25,7 @@ async def test_health_reports_unavailable_database() -> None:
 
 async def test_offer_and_privacy_pages() -> None:
     settings = make_settings(seller_name="Иванов Иван Иванович", seller_inn="123456789012")
-    engine = create_engine("postgresql+asyncpg://nobody@127.0.0.1:1/none")
+    engine = create_engine("sqlite+aiosqlite:////nonexistent/folder/none.db")
     try:
         app = create_web_app(engine, legal_pages(settings))
         async with TestClient(TestServer(app)) as client:
