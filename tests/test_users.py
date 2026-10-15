@@ -3,9 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lflbot.db import User
 from lflbot.users import get_or_create_user
-from tests.conftest import requires_db
-
-pytestmark = requires_db
 
 
 async def test_creates_user_once(session: AsyncSession) -> None:

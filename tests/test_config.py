@@ -2,7 +2,6 @@ from datetime import time
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import make_url
 
 from lflbot.config import Settings
 
@@ -12,7 +11,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "DATABASE_URL",
         "ADMIN_IDS",
-        "POSTGRES_PASSWORD",
+        "DATABASE_PATH",
         "DISPLAY_TIMEZONE",
         "YOOKASSA_SHOP_ID",
         "YOOKASSA_SECRET_KEY",
@@ -40,17 +39,18 @@ def test_admin_ids_empty_by_default() -> None:
     assert make_settings().admin_ids == []
 
 
-def test_db_url_escapes_password(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ss/word")
-    url = make_url(make_settings().db_url())
-    assert url.password == "p@ss/word"
-    assert url.host == "db"
-    assert url.drivername == "postgresql+asyncpg"
+def test_db_url_points_to_data_folder() -> None:
+    assert make_settings().db_url() == "sqlite+aiosqlite:////data/lflbot.db"
 
 
-def test_database_url_overrides_parts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u@h:1/x")
-    assert make_settings().db_url() == "postgresql+asyncpg://u@h:1/x"
+def test_database_path_changes_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_PATH", "/tmp/bot.db")
+    assert make_settings().db_url() == "sqlite+aiosqlite:////tmp/bot.db"
+
+
+def test_database_url_overrides_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///x.db")
+    assert make_settings().db_url() == "sqlite+aiosqlite:///x.db"
 
 
 def test_invalid_timezone_rejected(monkeypatch: pytest.MonkeyPatch) -> None:

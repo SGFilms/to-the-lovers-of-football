@@ -10,10 +10,7 @@ from lflbot.db import Payment, User, create_session_factory
 from lflbot.payments import PaymentService, YooKassaError, apply_remote
 from lflbot.payments.service import REUSE_LINK_FOR
 from lflbot.users import get_or_create_user
-from tests.conftest import requires_db
 from tests.fakes import PRICE, FakeYooKassa
-
-pytestmark = requires_db
 
 USER = 42
 
@@ -268,6 +265,27 @@ async def test_double_click_creates_one_payment(
 
     assert first == second
     assert len(yookassa.created) == 1
+
+
+async def test_simultaneous_syncs_credit_payment_once(
+    service: PaymentService,
+    session: AsyncSession,
+    session_factory,
+    yookassa: FakeYooKassa,
+    on_change: AsyncMock,
+) -> None:
+    # Уведомление ЮKassa, фоновая сверка и «Я оплатил» пришли одновременно.
+    payment = await service.checkout(session, USER)
+    yookassa.pay(payment.id)
+    before = datetime.now(UTC)
+
+    changes = await asyncio.gather(*(service.sync(payment.id) for _ in range(5)))
+
+    assert sum(change is not None for change in changes) == 1
+    assert on_change.await_count == 1
+    ends_at = await user_ends_at(session_factory)
+    assert ends_at is not None
+    assert before + timedelta(days=30) <= ends_at < before + timedelta(days=31)
 
 
 async def test_sync_pending_raises_when_nothing_could_be_checked(

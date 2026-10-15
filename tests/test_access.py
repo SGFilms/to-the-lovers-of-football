@@ -4,9 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lflbot.access import Access, schedule_access, use_free_preview
 from lflbot.users import get_or_create_user
-from tests.conftest import requires_db
-
-pytestmark = requires_db
 
 NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 

@@ -5,13 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app/src
 
-# Для резервных копий: pg_dump из репозитория PostgreSQL и openssl для шифрования копий.
-# pg_dump умеет снимать копии с баз своей и более старых версий, поэтому версия клиента
-# не ниже базы: postgres:16 в docker-compose.yml и управляемой базы в Amvera.
+# openssl шифрует резервные копии базы.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates openssl postgresql-common \
-    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
-    && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,11 +18,11 @@ RUN pip install -r requirements.txt
 COPY alembic.ini .
 COPY migrations ./migrations
 COPY src ./src
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 
-RUN useradd --create-home --uid 1000 bot
-USER bot
+# Бот работает от пользователя bot: от root только entrypoint.sh отдаёт ему папку базы.
+RUN useradd --create-home --uid 1000 bot && mkdir -p /data && chown bot:bot /data
 
 EXPOSE 8080
 
-# Перед запуском бота база приводится к последней версии схемы.
-CMD ["sh", "-c", "alembic upgrade head && exec python -m lflbot"]
+CMD ["entrypoint.sh"]

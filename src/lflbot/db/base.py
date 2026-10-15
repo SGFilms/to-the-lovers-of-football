@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import MetaData
+from sqlalchemy import DateTime, Dialect, MetaData, TypeDecorator
 from sqlalchemy.orm import DeclarativeBase
 
 # Единые имена ограничений, чтобы миграции Alembic были предсказуемыми.
@@ -20,3 +21,23 @@ def utcnow() -> datetime:
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+class UtcDateTime(TypeDecorator[datetime]):
+    """Дата и время в UTC. SQLite не хранит часовой пояс, поэтому в базу дата пишется
+    без пояса, приведённой к UTC, а при чтении пояс UTC возвращается."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> Any:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("В базу пишутся только даты с часовым поясом")
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC)

@@ -5,9 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lflbot.db import User
 from lflbot.reminders import Reminder, send_due_reminders
-from tests.conftest import requires_db
-
-pytestmark = requires_db
 
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 

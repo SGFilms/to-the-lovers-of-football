@@ -1,6 +1,6 @@
 # Настройка для Amvera (amvera.ru): бот собирается из Dockerfile в корне репозитория.
-# docker-compose.yml и Caddy там не используются: базу даёт управляемый PostgreSQL Amvera,
-# а HTTPS — домен проекта в Amvera. Подробно — в README, раздел «Хостинг в Amvera».
+# docker-compose.yml и Caddy там не используются: база SQLite лежит в постоянном хранилище
+# /data, а HTTPS даёт домен проекта в Amvera. Подробно — в README, раздел «Хостинг в Amvera».
 meta:
   environment: docker
   toolchain:
@@ -12,3 +12,5 @@ build:
 run:
   # Порт встроенного веб-сервера бота (WEB_PORT): /health, уведомления ЮKassa, оферта.
   containerPort: 8080
+  # Постоянное хранилище: здесь файл базы lflbot.db. Переживает перезапуски и пересборки.
+  persistenceMount: /data

@@ -13,7 +13,6 @@ from lflbot.bot.menu_view import home_screen, welcome_keyboard, welcome_text
 from lflbot.bot.screens import show_screen
 from lflbot.db import User
 from lflbot.db.base import utcnow
-from tests.conftest import requires_db
 from tests.tg import (
     USER,
     button_texts,
@@ -70,7 +69,6 @@ def test_menu_for_subscriber_with_favorite_team() -> None:
     assert ScheduleCallback.unpack(favorite.callback_data).club_id == 989
 
 
-@requires_db
 async def test_start_greets_new_user_with_cover(session: AsyncSession) -> None:
     message = tg_message()
     state = fsm_state()
@@ -83,7 +81,6 @@ async def test_start_greets_new_user_with_cover(session: AsyncSession) -> None:
     assert await session.get(User, USER) is not None
 
 
-@requires_db
 async def test_start_shows_menu_to_subscriber(session: AsyncSession) -> None:
     session.add(user(subscription_ends_at=NOW + timedelta(days=3)))
     await session.commit()
@@ -95,7 +92,6 @@ async def test_start_shows_menu_to_subscriber(session: AsyncSession) -> None:
     assert "Подписка активна до" in message.sent[0].html_text
 
 
-@requires_db
 async def test_menu_button_replaces_cover_with_text(session: AsyncSession) -> None:
     callback = tg_callback(message=tg_message(photo=[object()]))
 

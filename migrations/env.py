@@ -15,7 +15,8 @@ target_metadata = Base.metadata
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # SQLite почти не умеет ALTER TABLE: в пакетном режиме Alembic пересоздаёт таблицу.
+    context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True)
     with context.begin_transaction():
         context.run_migrations()
 

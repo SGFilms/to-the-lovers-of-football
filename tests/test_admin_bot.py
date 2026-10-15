@@ -25,7 +25,6 @@ from lflbot.bot.handlers.admin import (
 from lflbot.db import Payment, User, create_session_factory
 from lflbot.lfl import LflFailure, LflHealth
 from lflbot.payments import PaymentService
-from tests.conftest import requires_db
 from tests.fakes import PRICE, FakeYooKassa
 from tests.tg import make_settings, tg_message
 
@@ -89,7 +88,6 @@ async def test_bad_arguments() -> None:
     assert answer(message) == texts.ADMIN_PAYMENT_USAGE
 
 
-@requires_db
 async def test_stats_command(session: AsyncSession) -> None:
     session.add(User(telegram_id=USER, subscription_ends_at=datetime.now(UTC) + timedelta(days=1)))
     await session.commit()
@@ -106,7 +104,6 @@ async def test_stats_command(session: AsyncSession) -> None:
     assert "Бот запущен 14.10.2026, 12:00 МСК" in text
 
 
-@requires_db
 async def test_grant_command_notifies_user(session: AsyncSession) -> None:
     message = tg_message(ADMIN)
     notifier = AsyncMock()
@@ -130,7 +127,6 @@ async def test_grant_command_notifies_user(session: AsyncSession) -> None:
     assert answer(message) == texts.ADMIN_NOTHING_TO_TAKE.format(user_id=USER)
 
 
-@requires_db
 async def test_grant_to_user_who_never_wrote(session: AsyncSession) -> None:
     message = tg_message(ADMIN)
     notifier = AsyncMock()
@@ -139,7 +135,6 @@ async def test_grant_to_user_who_never_wrote(session: AsyncSession) -> None:
     assert answer(message).endswith(texts.ADMIN_USER_NOT_NOTIFIED)
 
 
-@requires_db
 async def test_user_command(session: AsyncSession) -> None:
     message = tg_message(ADMIN)
     await cmd_user(message, command("42"), session, SETTINGS)
@@ -176,7 +171,6 @@ async def test_user_command(session: AsyncSession) -> None:
     assert "14.10.2026 · 1 ₽ · оплачен · <code>pay-1</code>" in text
 
 
-@requires_db
 async def test_payment_command_rechecks_status(engine: AsyncEngine, session: AsyncSession) -> None:
     yookassa = FakeYooKassa()
     on_change = AsyncMock()
@@ -227,7 +221,7 @@ async def test_check_command() -> None:
 
 async def test_backup_command() -> None:
     async def make(now: datetime) -> Backup:
-        return Backup("lflbot-1.sql.gz", b"x", now, False, users=1, payments=0)
+        return Backup("lflbot-1.db.gz", b"x", now, False, users=1, payments=0)
 
     send = AsyncMock(return_value=None)
     message = tg_message(ADMIN)
@@ -236,7 +230,7 @@ async def test_backup_command() -> None:
     send.assert_awaited_once()
     assert [m.html_text for m in message.sent] == [
         texts.BACKUP_STARTED,
-        "💾 Копия базы lflbot-1.sql.gz, 1 КБ:\n✅ Telegram",
+        "💾 Копия базы lflbot-1.db.gz, 1 КБ:\n✅ Telegram",
     ]
 
 

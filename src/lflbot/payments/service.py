@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lflbot import subscription
-from lflbot.db import Payment, User
+from lflbot.db import Payment, User, lock_for_update
 from lflbot.db.base import utcnow
 from lflbot.payments.yookassa import RemotePayment, ShopInfo, YooKassaClient, YooKassaError
 from lflbot.users import get_or_create_user
@@ -60,9 +60,10 @@ async def apply_remote(
     """Приводит платёж и подписку в базе к состоянию платежа в ЮKassa и сохраняет.
 
     Оплата засчитывается и возврат снимает дни ровно один раз, сколько бы раз ни
-    пришло уведомление: строки платежа и пользователя блокируются на время изменения."""
+    пришло уведомление: на время изменения база занята только этой сессией."""
     now = now or utcnow()
-    payment = await session.get(Payment, remote.id, with_for_update=True, populate_existing=True)
+    await lock_for_update(session)
+    payment = await session.get(Payment, remote.id, populate_existing=True)
     if payment is None:
         logger.warning("Платёж %s не найден в базе, пропускаю", remote.id)
         await session.rollback()
@@ -111,7 +112,8 @@ async def apply_remote(
 
 
 async def _lock_user(session: AsyncSession, user_id: int) -> User:
-    user = await session.get(User, user_id, with_for_update=True, populate_existing=True)
+    # База уже занята этой сессией (lock_for_update в apply_remote).
+    user = await session.get(User, user_id, populate_existing=True)
     assert user is not None, "у платежа всегда есть пользователь (внешний ключ)"
     return user
 
@@ -239,7 +241,8 @@ class PaymentService:
         отменённым, чтобы его больше не сверять и не показывать ссылку на него."""
         logger.warning("Платежа %s нет в магазине ЮKassa, считаю его отменённым", payment_id)
         async with self._session_factory() as session:
-            payment = await session.get(Payment, payment_id, with_for_update=True)
+            await lock_for_update(session)
+            payment = await session.get(Payment, payment_id)
             if payment is not None and payment.status in UNPAID_STATUSES:
                 payment.status = CANCELED
                 payment.confirmation_url = None

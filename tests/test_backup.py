@@ -1,4 +1,5 @@
 import gzip
+import sqlite3
 from datetime import UTC, datetime, time
 from email.message import EmailMessage
 from types import SimpleNamespace
@@ -21,14 +22,12 @@ from lflbot.backup import (
     format_size,
     make_backup,
     next_run,
-    pg_env,
 )
 from lflbot.bot import texts
 from lflbot.bot.backup_view import caption, create_backup_service, email_sender, report_text
 from lflbot.bot.notify import Notifier
 from lflbot.db import Payment, User, create_session_factory
 from lflbot.release_check import Level, check_backup
-from tests.conftest import TEST_DATABASE_URL, requires_db
 from tests.tg import make_settings
 
 MSK = ZoneInfo("Europe/Moscow")
@@ -42,7 +41,7 @@ SMTP = {
 
 
 def sample(data: bytes = b"dump", encrypted: bool = False) -> Backup:
-    return Backup("lflbot-20261014-040000.sql.gz", data, NOW, encrypted, users=3, payments=2)
+    return Backup("lflbot-20261014-040000.db.gz", data, NOW, encrypted, users=3, payments=2)
 
 
 def test_next_run() -> None:
@@ -61,18 +60,6 @@ def test_format_size() -> None:
     assert format_size(3 * 1024 * 1024 + 512 * 1024) == "3,5 МБ"
 
 
-def test_pg_env() -> None:
-    env = pg_env("postgresql+asyncpg://bot:p%40ss@db:5433/lflbot")
-    assert env == {
-        "PGHOST": "db",
-        "PGPORT": "5433",
-        "PGUSER": "bot",
-        "PGDATABASE": "lflbot",
-        "PGPASSWORD": "p@ss",
-    }
-    assert "PGPASSWORD" not in pg_env("postgresql+asyncpg://bot@db/lflbot")
-
-
 async def test_encryption_round_trip() -> None:
     data = gzip.compress(b"CREATE TABLE users ();")
     encrypted = await encrypt(data, "секрет 123")
@@ -83,9 +70,10 @@ async def test_encryption_round_trip() -> None:
         await decrypt(encrypted, "другой")
 
 
-@requires_db
 @pytest.mark.parametrize("password", ["", "секрет"])
-async def test_make_backup_from_database(engine: AsyncEngine, password: str) -> None:
+async def test_make_backup_from_database(
+    engine: AsyncEngine, migrated_db: str, password: str, tmp_path
+) -> None:
     session_factory = create_session_factory(engine)
     async with session_factory() as session:
         session.add(User(telegram_id=42))
@@ -102,16 +90,22 @@ async def test_make_backup_from_database(engine: AsyncEngine, password: str) -> 
         )
         await session.commit()
 
-    assert TEST_DATABASE_URL
-    backup = await make_backup(session_factory, TEST_DATABASE_URL, password, NOW, MSK)
+    backup = await make_backup(session_factory, migrated_db, password, NOW, MSK)
 
     assert (backup.users, backup.payments) == (1, 1)
     assert backup.encrypted == bool(password)
     data = await decrypt(backup.data, password) if password else backup.data
-    sql = gzip.decompress(data).decode()
-    assert "CREATE TABLE public.users" in sql
-    assert "pay-1" in sql
-    expected = "lflbot-20261014-040000.sql.gz" + (".enc" if password else "")
+    # Распакованная копия — готовый файл базы.
+    restored = tmp_path / "restored.db"
+    restored.write_bytes(gzip.decompress(data))
+    db = sqlite3.connect(restored)
+    try:
+        assert db.execute("SELECT telegram_id FROM users").fetchall() == [(42,)]
+        assert db.execute("SELECT id, status FROM payments").fetchall() == [("pay-1", "pending")]
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() is not None
+    finally:
+        db.close()
+    expected = "lflbot-20261014-040000.db.gz" + (".enc" if password else "")
     assert backup.filename == expected
 
 
@@ -193,7 +187,7 @@ async def test_telegram_sends_file_to_every_admin() -> None:
     assert await notifier.backup(sample(b"gz"), "подпись") is None
     assert [c.args[0] for c in bot.send_document.await_args_list] == [1, 2]
     document = bot.send_document.await_args.args[1]
-    assert document.filename == "lflbot-20261014-040000.sql.gz"
+    assert document.filename == "lflbot-20261014-040000.db.gz"
     assert document.data == b"gz"
     assert bot.send_document.await_args.kwargs["caption"] == "подпись"
 
@@ -263,7 +257,7 @@ async def test_email_with_attachment(smtp: type[FakeSmtp]) -> None:
     assert message["To"] == "me@yandex.ru"
     assert message["Subject"] == "Копия базы бота ЛФЛ · 14.10.2026, 04:00 МСК"
     (attachment,) = message.iter_attachments()
-    assert attachment.get_filename() == "lflbot-20261014-040000.sql.gz"
+    assert attachment.get_filename() == "lflbot-20261014-040000.db.gz"
     assert attachment.get_content() == b"gz-data"
     assert texts.BACKUP_CAPTION_ENCRYPTED in message.get_body().get_content()
 

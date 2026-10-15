@@ -28,11 +28,8 @@ from lflbot.bot.middlewares import DbSessionMiddleware
 from lflbot.db import create_session_factory
 from lflbot.lfl import ClubSearch, LflHealth
 from lflbot.payments import PaymentService
-from tests.conftest import requires_db
 from tests.fakes import PRICE
 from tests.tg import MONTANA, USER, make_settings, schedule_with_match
-
-pytestmark = requires_db
 
 NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 
