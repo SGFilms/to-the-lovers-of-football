@@ -4,11 +4,14 @@ from datetime import time
 from decimal import Decimal
 from functools import cached_property
 from typing import Annotated
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy import URL
+
+PROXY_SCHEMES = ("socks5", "socks4", "http")
 
 
 class DatabaseSettings(BaseSettings):
@@ -42,6 +45,11 @@ class Settings(DatabaseSettings):
     bot_token: SecretStr
     # Telegram ID администраторов через запятую: им доступны служебные команды и отзывы.
     admin_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
+
+    # Прокси только для запросов бота к Telegram (если сервер не достаёт до api.telegram.org):
+    # socks5://хост:порт, socks5://логин:пароль@хост:порт или http://хост:порт. Пусто — напрямую.
+    # Сайт ЛФЛ, ЮKassa и почта ходят напрямую, как обычно.
+    telegram_proxy: SecretStr = SecretStr("")
 
     # Встроенный веб-сервер: проверка здоровья, позже уведомления ЮKassa.
     web_host: str = "0.0.0.0"
@@ -101,6 +109,23 @@ class Settings(DatabaseSettings):
         if isinstance(value, int):
             return [value]
         return value
+
+    @field_validator("telegram_proxy")
+    @classmethod
+    def _check_telegram_proxy(cls, value: SecretStr) -> SecretStr:
+        url = value.get_secret_value().strip()
+        if url:
+            parsed = urlparse(url)
+            try:
+                port = parsed.port
+            except ValueError:
+                port = None
+            if parsed.scheme not in PROXY_SCHEMES or not parsed.hostname or port is None:
+                # Сам адрес в сообщение не попадает: в нём может быть пароль.
+                raise ValueError(
+                    "TELEGRAM_PROXY нужен в виде socks5://хост:порт или http://хост:порт"
+                )
+        return SecretStr(url)
 
     @field_validator("display_timezone")
     @classmethod

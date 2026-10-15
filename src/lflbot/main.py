@@ -5,7 +5,9 @@ from datetime import time, tzinfo
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramNetworkError
 from aiohttp import web
 
 from lflbot.backup import next_run
@@ -69,6 +71,15 @@ async def run_daily(
         moment = next_run(max(utcnow(), moment), at, tz)
 
 
+def create_bot(settings: Settings) -> Bot:
+    proxy = settings.telegram_proxy.get_secret_value()
+    return Bot(
+        token=settings.bot_token.get_secret_value(),
+        session=AiohttpSession(proxy=proxy) if proxy else None,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+
+
 async def main() -> None:
     settings = Settings()
     logging.basicConfig(
@@ -79,11 +90,19 @@ async def main() -> None:
     engine = create_engine(settings.db_url())
     session_factory = create_session_factory(engine)
 
-    bot = Bot(
-        token=settings.bot_token.get_secret_value(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    me = await bot.get_me()
+    bot = create_bot(settings)
+    if settings.telegram_proxy.get_secret_value():
+        logger.info("Запросы к Telegram идут через прокси (TELEGRAM_PROXY)")
+    try:
+        me = await bot.get_me()
+    except TelegramNetworkError:
+        logger.error(
+            "Сервер не достаёт до api.telegram.org. Проверьте доступ к Telegram "
+            "или задайте TELEGRAM_PROXY в .env (см. README)."
+        )
+        await bot.session.close()
+        await engine.dispose()
+        raise
     notifier = Notifier(bot, settings)
     alerts = BotAlerts(Alerts(notifier.to_admins))
 
