@@ -49,12 +49,27 @@ def is_yookassa_ip(address: str | None) -> bool:
     return any(ip in net for net in YOOKASSA_NETWORKS)
 
 
+def _public_ip(address: str) -> str | None:
+    try:
+        ip = ipaddress.ip_address(address.strip())
+    except ValueError:
+        return None
+    return str(ip) if ip.is_global else None
+
+
 def client_ip(request: web.Request) -> str | None:
-    """Адрес отправителя. Порт бота открыт только для Caddy, а Caddy записывает
-    настоящий адрес клиента последним в X-Forwarded-For."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[-1].strip()
+    """Адрес отправителя. Порт бота открыт только для прокси хостинга (Caddy на своём
+    сервере, nginx в Amvera). Каждый прокси дописывает адрес, с которого к нему пришли,
+    в конец X-Forwarded-For, поэтому настоящий адрес клиента — последний публичный в
+    списке: адреса левее мог подставить сам клиент, правее — внутренние прокси хостинга."""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    for address in reversed(forwarded.split(",")):
+        public = _public_ip(address)
+        if public is not None:
+            return public
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip and _public_ip(real_ip):
+        return real_ip.strip()
     return request.remote
 
 
@@ -80,7 +95,11 @@ def payment_id_of(event: object) -> str | None:
 async def yookassa_webhook(request: web.Request) -> web.Response:
     ip = client_ip(request)
     if request.app[CHECK_IP_KEY] and not is_yookassa_ip(ip):
-        logger.warning("Уведомление ЮKassa с чужого адреса %s отклонено", ip)
+        logger.warning(
+            "Уведомление ЮKassa с чужого адреса %s отклонено (X-Forwarded-For: %s)",
+            ip,
+            request.headers.get("X-Forwarded-For", "нет"),
+        )
         return web.Response(status=403)
 
     try:

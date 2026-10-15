@@ -98,7 +98,7 @@ async def main() -> None:
     except TelegramNetworkError:
         logger.error(
             "Сервер не достаёт до api.telegram.org. Проверьте доступ к Telegram "
-            "или задайте TELEGRAM_PROXY в .env (см. README)."
+            "или задайте переменную TELEGRAM_PROXY (см. README)."
         )
         await bot.session.close()
         await engine.dispose()

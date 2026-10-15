@@ -205,11 +205,11 @@ ADMIN_YOOKASSA_LIVE = "боевой магазин"
 CHECK_REPORT = "🔎 <b>Проверка перед приёмом оплат</b> · {now}\n\n{lines}\n\n{verdict}"
 CHECK_YOOKASSA_OFF = (
     "<b>ЮKassa</b>: ключи не заданы, оплата отключена. "
-    "Впишите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env и перезапустите бота."
+    "Впишите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в переменные и перезапустите бота."
 )
 CHECK_YOOKASSA_BAD_KEYS = (
     "<b>ЮKassa</b>: ключи не подходят. Сверьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY "
-    "в .env с разделом «Интеграция» → «Ключи API» того же магазина."
+    "в переменных с разделом «Интеграция» → «Ключи API» того же магазина."
 )
 CHECK_YOOKASSA_UNAVAILABLE = (
     "<b>ЮKassa</b>: не отвечает, проверить ключи не удалось. Повторите /check через минуту."
@@ -228,7 +228,7 @@ CHECK_DOMAIN_EMPTY = (
 )
 CHECK_DOMAIN_FAILED = (
     "<b>Адрес сервера</b>: {url} не открылся изнутри сервера ({problem}). "
-    "Проверьте A-запись домена и <code>docker compose logs caddy</code>."
+    "Проверьте домен во вкладке «Домены» в Amvera и записи DNS у регистратора."
 )
 CHECK_DOMAIN_OK = "<b>Адрес сервера</b>: {url} отвечает, HTTPS работает."
 CHECK_WEBHOOK_NONE = (
@@ -237,12 +237,14 @@ CHECK_WEBHOOK_NONE = (
     "события payment.succeeded, payment.canceled, refund.succeeded."
 )
 CHECK_WEBHOOK_OK = "<b>Уведомления ЮKassa</b>: приходят, последнее {at}."
-CHECK_SELLER_MISSING = "<b>Оферта</b>: не заполнено {fields} в .env, в оферте стоит «не указано»."
+CHECK_SELLER_MISSING = (
+    "<b>Оферта</b>: не заполнено {fields} в переменных, в оферте стоит «не указано»."
+)
 CHECK_SELLER_OK = "<b>Оферта</b>: данные исполнителя заполнены."
 CHECK_LFL = "<b>Сайт ЛФЛ</b>: {state}"
 CHECK_BACKUP_OFF = (
     "<b>Копии базы</b>: никуда не отправляются. Включите BACKUP_TELEGRAM или задайте "
-    "BACKUP_EMAIL в .env, иначе при поломке сервера база пропадёт."
+    "BACKUP_EMAIL в переменных, иначе при поломке хостинга база пропадёт."
 )
 CHECK_BACKUP_MANUAL = "<b>Копии базы</b>: BACKUP_TIME пуст, копии только по команде /backup."
 CHECK_BACKUP_DAILY = "<b>Копии базы</b>: каждый день в {at} — {channels}, {protection}."
@@ -274,12 +276,10 @@ BACKUP_EMAIL_BODY = (
     "Пользователей: {users}, платежей: {payments}. {protection}\n\n"
     "Как восстановить базу — в README, раздел «Резервные копии».\n"
 )
-BACKUP_EMAIL_NOT_CONFIGURED = "не заданы {fields} в .env"
+BACKUP_EMAIL_NOT_CONFIGURED = "не заданы переменные {fields}"
 BACKUP_TOO_BIG = "файл {size} больше допустимых {limit}"
 BACKUP_NO_ADMINS = "ADMIN_IDS пуст"
-BACKUP_NOWHERE = (
-    "Копия никуда не отправляется: в .env выключен BACKUP_TELEGRAM и не задан BACKUP_EMAIL."
-)
+BACKUP_NOWHERE = "Копия никуда не отправляется: выключен BACKUP_TELEGRAM и не задан BACKUP_EMAIL."
 BACKUP_STARTED = "⏳ Делаю копию базы…"
 BACKUP_FAILED = "❌ Копию сделать не удалось:\n<code>{error}</code>"
 BACKUP_REPORT = "💾 Копия базы {filename}, {size}:\n{lines}"

@@ -46,4 +46,4 @@ jobs:
       - name: Build image
         run: docker build -t lflbot:ci .
       - name: Backup tools in image
-        run: docker run --rm lflbot:ci sh -c 'pg_dump --version | grep -q " 16\." && openssl version'
+        run: docker run --rm lflbot:ci sh -c 'pg_dump --version | grep -q " 18\." && openssl version'
