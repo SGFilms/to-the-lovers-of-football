@@ -14,6 +14,7 @@ from lflbot.backup import next_run
 from lflbot.bot import create_dispatcher
 from lflbot.bot.alerts import BotAlerts
 from lflbot.bot.backup_view import create_backup_service
+from lflbot.bot.expired_callbacks import IgnoreExpiredCallbacks
 from lflbot.bot.notify import Notifier
 from lflbot.bot.profile import apply_profile
 from lflbot.config import Settings
@@ -73,11 +74,13 @@ async def run_daily(
 
 def create_bot(settings: Settings) -> Bot:
     proxy = settings.telegram_proxy.get_secret_value()
-    return Bot(
+    bot = Bot(
         token=settings.bot_token.get_secret_value(),
         session=AiohttpSession(proxy=proxy) if proxy else None,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    bot.session.middleware(IgnoreExpiredCallbacks())
+    return bot
 
 
 async def main() -> None:
