@@ -5,12 +5,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app/src
 
-# Для резервных копий: pg_dump той же версии, что и база (postgres:16 в docker-compose.yml),
-# из репозитория PostgreSQL, и openssl для шифрования копий.
+# Для резервных копий: pg_dump из репозитория PostgreSQL и openssl для шифрования копий.
+# pg_dump умеет снимать копии с баз своей и более старых версий, поэтому версия клиента
+# не ниже базы: postgres:16 в docker-compose.yml и управляемой базы в Amvera.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates openssl postgresql-common \
     && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
-    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

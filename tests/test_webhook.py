@@ -15,7 +15,14 @@ def payment_event(event: str = "payment.succeeded", **obj) -> dict:
     return {"type": "notification", "event": event, "object": {"id": "pay-1", **obj}}
 
 
-async def post(event, *, ip: str = YOOKASSA_IP, sync: AsyncMock | None = None, check_ip=True):
+async def post(
+    event,
+    *,
+    ip: str = YOOKASSA_IP,
+    sync: AsyncMock | None = None,
+    check_ip=True,
+    headers: dict[str, str] | None = None,
+):
     service = AsyncMock()
     if sync is not None:
         service.sync = sync
@@ -23,7 +30,8 @@ async def post(event, *, ip: str = YOOKASSA_IP, sync: AsyncMock | None = None, c
     setup_webhook(app, service, check_ip=check_ip)
     async with TestClient(TestServer(app)) as client:
         kwargs = {"data": event} if isinstance(event, str) else {"json": event}
-        resp = await client.post(WEBHOOK_PATH, headers={"X-Forwarded-For": ip}, **kwargs)
+        headers = {"X-Forwarded-For": ip} if headers is None else headers
+        resp = await client.post(WEBHOOK_PATH, headers=headers, **kwargs)
         return resp.status, service.sync
 
 
@@ -82,6 +90,29 @@ async def test_foreign_ip_is_rejected() -> None:
 async def test_last_forwarded_address_is_checked() -> None:
     # Подставить чужой адрес первым в заголовке не выйдет: Caddy дописывает настоящий последним.
     status, _ = await post(payment_event(), ip=f"{YOOKASSA_IP}, 8.8.8.8")
+    assert status == 403
+
+
+async def test_internal_proxy_hops_are_skipped() -> None:
+    # В Amvera между ЮKassa и ботом стоят внутренние прокси: их адреса дописываются после.
+    status, sync = await post(payment_event(), ip=f"{YOOKASSA_IP}, 10.0.3.7, 100.64.0.12")
+    assert status == 200
+    sync.assert_awaited_once()
+
+
+async def test_spoofed_address_behind_internal_hops_is_rejected() -> None:
+    status, _ = await post(payment_event(), ip=f"{YOOKASSA_IP}, 8.8.8.8, 10.0.3.7")
+    assert status == 403
+
+
+async def test_real_ip_header_is_used_without_forwarded_for() -> None:
+    status, _ = await post(payment_event(), headers={"X-Real-IP": YOOKASSA_IP})
+    assert status == 200
+
+
+async def test_direct_request_uses_peer_address() -> None:
+    # Без заголовков прокси адрес берётся из соединения (в тесте это 127.0.0.1).
+    status, _ = await post(payment_event(), headers={})
     assert status == 403
 
 
