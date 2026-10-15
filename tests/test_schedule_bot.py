@@ -120,17 +120,17 @@ async def test_subscriber_sees_schedule_with_navigation(session: AsyncSession) -
 
 
 async def test_several_clubs_offer_choice(session: AsyncSession) -> None:
-    clubs = [Club(id=i, name="Спартак", league=f"Лига {i}") for i in range(12)]
+    clubs = [Club(id=i, name="Спартак", league=f"Лига {i}") for i in range(24)]
     lfl = fake_lfl(search=ClubSearch(clubs, 146))
     message = await type_team(session, lfl, "Спартак")
 
     lfl.club_schedule.assert_not_awaited()
     text, markup = shown(message.sent[0])
     assert "146" in text
-    assert "выдаёт только 12" in text
+    assert "показываю 15" in text
     choice = buttons(markup)
-    # Все команды, которые вернул сайт, и кнопка меню.
-    assert len(choice) == 13
+    # Первые 15 команд из ответа сайта и кнопка меню.
+    assert len(choice) == 16
     assert choice[0].text == "Спартак · Лига 0"
     assert ScheduleCallback.unpack(choice[3].callback_data).club_id == 3
     assert choice[-1].text == texts.MENU_BUTTON
